@@ -1,9 +1,15 @@
-from sys import argv
+from std.sys import argv
 
 
 struct ParseOptions(Equatable, TrivialRegisterPassable):
-    fn __init__(out self):
-        return
+    comptime ParsingOptions: Int = 1
+    comptime ParsingArguments: Int = 2
+
+    var parsing_mode: Int
+
+
+    fn __init__(out self, *, parsing_mode: Int = Self.ParsingOptions):
+        self.parsing_mode = parsing_mode
 
 
 struct Parser[options: ParseOptions = ParseOptions()]:

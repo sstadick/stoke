@@ -5,6 +5,7 @@ from std.reflection import (
     is_struct_type,
     get_base_type_name,
 )
+from std.os import abort
 
 from .parser import Parser, ParseOptions
 
@@ -12,7 +13,7 @@ from std.builtin.rebind import downcast
 from std.collections import Set
 from std.memory import ArcPointer, OwnedPointer
 from std.sys.intrinsics import unlikely, _type_is_eq
-from hashlib.hasher import Hasher
+from std.hashlib.hasher import Hasher
 
 
 comptime non_struct_error = "Cannot deserialize non-struct type"
@@ -48,6 +49,9 @@ struct OptHelp(Copyable, Hashable, Writable, _Base):
     If this is None, no short options be allowed for this field.
     """
 
+    var is_arg: Bool
+    """Whether or not this is a positional argument."""
+
     fn __init__(
         out self,
         *,
@@ -55,12 +59,13 @@ struct OptHelp(Copyable, Hashable, Writable, _Base):
         default_value: Optional[String] = None,
         long_opt: Optional[String] = None,
         short_opt: Optional[String] = None,
-        is_arg: Bool = False,
+        is_arg: Bool = False
     ):
         self.help_msg = help_msg
         self.default_value = default_value
         self.long_opt = long_opt
         self.short_opt = short_opt
+        self.is_arg = is_arg
 
 
 trait JsonDeserializable(_Base):
@@ -120,6 +125,9 @@ fn deserialize[
 fn __is_optional[T: AnyType]() -> Bool:
     return get_base_type_name[T]() == "Optional"
 
+@always_inline
+fn __is_list[T: AnyType]() -> Bool:
+    return get_base_type_name[T]() == "List"
 
 @always_inline
 fn __is_default[T: AnyType]() -> Bool:
@@ -147,7 +155,7 @@ fn __to_ident(s: String) -> String:
     return fixed
 
 
-fn __possible_idents[T: JsonDeserializable]() raises -> Dict[String, String]:
+fn __possible_idents[T: JsonDeserializable]() -> Dict[String, String]:
     """ """
     comptime metadata = T.opt_metadata()
     comptime field_names = struct_field_names[T]()
@@ -159,13 +167,13 @@ fn __possible_idents[T: JsonDeserializable]() raises -> Dict[String, String]:
         if opts:
             if opts.value().short_opt:
                 if opts.value().short_opt.value() in ret:
-                    raise Error(
+                    abort(
                         "Duplicate key: " + opts.value().short_opt.value()
                     )
                 ret[opts.value().short_opt.value()] = String(name)
             if opts.value().long_opt:
                 if opts.value().long_opt.value() in ret:
-                    raise Error(
+                    abort(
                         "Duplicate key: " + opts.value().long_opt.value()
                     )
                 ret[opts.value().long_opt.value()] = String(name)
@@ -215,19 +223,24 @@ fn _default_deserialize[
         # maybe an optimization since the InlineArray ctor uses a for loop
         # but according to the IR this will just inline the computed values
         var seen = materialize[InlineArray[Bool, field_count](fill=False)]()
-        comptime metadata = downcast[T, JsonDeserializable].opt_metadata()
-        var possible_idents = __possible_idents[
+        comptime type_metadata = downcast[T, JsonDeserializable].opt_metadata()
+        print(materialize[type_metadata]())
+        var possible_idents = materialize[__possible_idents[
             downcast[T, JsonDeserializable]
-        ]()
+        ]()]()
 
+        var positionals: List[String] = []
         # while p.peek() != `}`:
         while not p.is_done():
-            var ident = possible_idents.get(__to_ident(p.read_string()))
-            # TODO: this ident is the "--name", or "-n", needs conversion to struct name
-            # TODO: strengths the long-opt only convention for now
+            var candidate_ident = p.read_string()
+            var ident = possible_idents.get(__to_ident(candidate_ident))
             # p.expect(`:`)
+
             if not ident:
-                raise Error("Unexpected field: ", ident)
+                # Actually might be positional argument
+                # raise Error("Unexpected field: ", candidate_ident)
+                positionals.append(candidate_ident)
+                continue
 
             var matched = False
             comptime for i in range(field_count):
@@ -235,26 +248,69 @@ fn _default_deserialize[
 
                 if ident.value() == name:
                     ref seen_i = seen.unsafe_get(i)
-                    if unlikely(seen_i):
-                        raise Error("Duplicate key: ", name)
-                    seen_i = True
-                    matched = True
+
+
+                    comptime if Bool(type_metadata.get(name)) and type_metadata.get(name).value().is_arg:
+                        raise Error(name, "is a positional argument, not an option.")
+
+                    
                     ref field = __struct_field_ref(i, s)
                     comptime TField = downcast[type_of(field), _Base]
 
-                    comptime if _type_is_eq[TField, Bool]():
-                        # The existance of the flag makes it true
-                        # There are now KV pairs for flags
-                        field = rebind[TField](True)
+                    # Special handling of bool fields, which are flags
+                    comptime if __is_list[TField]():
+                        # TODO: add the append_from_json method to the trait, default to explode if not a list
+                        downcast[type_of(field), JsonDeserializable].append_from_json(field, p)
+                    elif _type_is_eq[TField, Bool]():
+                        if seen_i:
+                            raise Error("Duplicate key: ", name)
+                        comptime if Bool(type_metadata.get(name)) and Bool(type_metadata.get(name).value().default_value):
+                            # Invert whatever the supplied default was
+                            comptime value = type_metadata.get(name).value().default_value.value()
+                            var p = Parser([value])
+                            field = downcast[TField, JsonDeserializable].from_json(p)
+                            field = rebind[TField](not rebind[Bool](field))
+                        else:
+                            # Since the default for bool is False, invert it to true
+                            field = rebind[TField](True)
                     else:
+                        if seen_i:
+                            raise Error("Duplicate key: ", name)
                         field = _deserialize_impl[TField](p)
 
+                    seen_i = True
+                    matched = True
+
             if unlikely(not matched):
-                raise Error("Unexpected field: ", ident)
+                raise Error("Unexpected field: ", candidate_ident)
 
             # p.skip_whitespace()
             # if p.peek() != `}`:
             #     p.expect(`,`)
+        
+        # Check for positional arguments
+        if positionals:
+            var pp = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](positionals^)
+            comptime for i in range(field_count):
+                comptime metadata = type_metadata.get(field_names[i])
+
+                comptime if Bool(metadata) and metadata.value().is_arg:
+                    print(t"trying to parse {materialize[field_names[i]]()} as arg")
+                    ref seen_i = seen.unsafe_get(i)
+                    seen_i = True
+                    ref field = __struct_field_ref(i, s)
+                    comptime TField = downcast[type_of(field), _Base]
+                    try:
+                        field = _deserialize_impl[TField](pp)
+                    except e:
+                        raise Error(t"Can't parse positional argument {materialize[field_names[i]]()}: {e}")
+                else:
+                    print(t"not trying to parse {materialize[field_names[i]]()} as arg")
+
+            if not pp.is_done():
+                print(pp.data)
+                raise Error("Unexpected fields: ", pp.data)
+
 
         comptime for i in range(field_count):
             # We didn't find a key value pairing
@@ -302,8 +358,10 @@ fn _deserialize_impl[
     comptime assert is_struct_type[T](), non_struct_error
 
     comptime if conforms_to(T, JsonDeserializable):
+        print("Calling from json")
         s = downcast[T, JsonDeserializable].from_json(p)
     else:
+        print("gettin weird")
         s = _default_deserialize[T, False](p)
 
 
@@ -317,6 +375,7 @@ __extension String(JsonDeserializable):
     fn from_json[
         options: ParseOptions, //
     ](mut p: Parser[options], out s: Self) raises:
+        print("reading string")
         s = p.read_string()
 
     @staticmethod
@@ -332,6 +391,7 @@ __extension Int(JsonDeserializable):
     fn from_json[
         options: ParseOptions, //
     ](mut p: Parser[options], out s: Self) raises:
+        print("reading int")
         s = p.read_int()
 
     @staticmethod
@@ -348,6 +408,7 @@ __extension Bool(JsonDeserializable):
     fn from_json[
         options: ParseOptions, //
     ](mut p: Parser[options], out s: Self) raises:
+        print("reading bool")
         s = p.read_bool()
 
     @staticmethod
@@ -481,24 +542,29 @@ __extension Bool(JsonDeserializable):
 #         return False
 
 
-# __extension List(JsonDeserializable):
-#     @staticmethod
-#     fn from_json[
-#         options: ParseOptions, //
-#     ](mut p: Parser[options], out s: Self) raises:
-#         p.expect(`[`)
-#         s = Self()
+__extension List(JsonDeserializable):
+    @staticmethod
+    fn from_json[
+        options: ParseOptions, //
+    ](mut p: Parser[options], out s: Self) raises:
+        print("Reading list")
+        s = Self()
+        
+        comptime if options.parsing_mode == ParseOptions.ParsingArguments:
+            # If we are argument parsing, consume all the values possible
+            while not p.is_done():
+                s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
+        else:
+            # If we are still option parsing, lists will come as kv pairs still
+            s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
 
-#         while p.peek() != `]`:
-#             s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
-#             p.skip_whitespace()
-#             if p.peek() != `]`:
-#                 p.expect(`,`)
-#         p.expect(`]`)
+    @staticmethod
+    fn deserialize_as_array() -> Bool:
+        return False
 
-#     @staticmethod
-#     fn deserialize_as_array() -> Bool:
-#         return False
+    @staticmethod
+    fn opt_metadata() -> Dict[String, OptHelp]:
+        return {}
 
 
 # __extension Dict(JsonDeserializable):
