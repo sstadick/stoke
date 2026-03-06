@@ -84,6 +84,16 @@ trait JsonDeserializable(_Base):
     fn opt_metadata() -> Dict[String, OptHelp]:
         return {}
 
+trait JsonDeserializableAppendable(JsonDeserializable, Appendable):
+    fn append_from_json[options: ParseOptions, //](mut self, mut p: Parser[options]) raises:
+        # comptime assert(conforms_to(Self, Appendable))
+        ...
+
+
+trait Appendable(_Base):
+    fn append_to(mut self, var value: Some[Copyable & _Base]):
+        ...
+    
 
 @always_inline
 fn try_deserialize[T: _Base](s: List[StaticString]) -> Optional[T]:
@@ -128,6 +138,10 @@ fn __is_optional[T: AnyType]() -> Bool:
 @always_inline
 fn __is_list[T: AnyType]() -> Bool:
     return get_base_type_name[T]() == "List"
+
+@always_inline
+fn __is_appendable[T: AnyType]() -> Bool:
+    return conforms_to(T, Appendable)
 
 @always_inline
 fn __is_default[T: AnyType]() -> Bool:
@@ -258,9 +272,9 @@ fn _default_deserialize[
                     comptime TField = downcast[type_of(field), _Base]
 
                     # Special handling of bool fields, which are flags
-                    comptime if __is_list[TField]():
+                    comptime if __is_appendable[TField]():
                         # TODO: add the append_from_json method to the trait, default to explode if not a list
-                        downcast[type_of(field), JsonDeserializable].append_from_json(field, p)
+                        trait_downcast[JsonDeserializableAppendable](field).append_from_json(p)
                     elif _type_is_eq[TField, Bool]():
                         if seen_i:
                             raise Error("Duplicate key: ", name)
@@ -388,6 +402,7 @@ __extension String(JsonDeserializable):
 
 
 __extension Int(JsonDeserializable):
+
     fn from_json[
         options: ParseOptions, //
     ](mut p: Parser[options], out s: Self) raises:
@@ -404,6 +419,7 @@ __extension Int(JsonDeserializable):
 
 
 __extension Bool(JsonDeserializable):
+
     @staticmethod
     fn from_json[
         options: ParseOptions, //
@@ -542,7 +558,15 @@ __extension Bool(JsonDeserializable):
 #         return False
 
 
-__extension List(JsonDeserializable):
+__extension List(JsonDeserializableAppendable):
+    fn append_to(mut self, var value: Some[Copyable & _Base]):
+        self.append(rebind_var[Self.T](value^))
+
+    fn append_from_json[options: ParseOptions, //](mut self, mut p: Parser[options]) raises:
+        var deser = _deserialize_impl[downcast[Self.T, _Base]](p) # _Base
+        var value = trait_downcast_var[Copyable&_Base](deser^) # implicitly Self.T
+        self.append_to(value^)
+
     @staticmethod
     fn from_json[
         options: ParseOptions, //
