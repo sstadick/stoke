@@ -3,7 +3,11 @@ from std.sys import argv
 
 struct ParseOptions(Equatable, TrivialRegisterPassable):
     comptime ParsingOptions: Int = 1
+    """Indicates that we are parsing key-value paired options."""
     comptime ParsingArguments: Int = 2
+    """Indicates that we are parsing non-key-value paired arguments."""
+    comptime ParsingDefaults: Int = 3
+    """Indicates that we are parsing user defined default values."""
 
     var parsing_mode: Int
 

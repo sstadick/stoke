@@ -307,6 +307,8 @@ fn _default_deserialize[
             var pp = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](positionals^)
             comptime for i in range(field_count):
                 comptime metadata = type_metadata.get(field_names[i])
+                if pp.is_done():
+                    break
 
                 comptime if Bool(metadata) and metadata.value().is_arg:
                     print(t"trying to parse {materialize[field_names[i]]()} as arg")
@@ -342,7 +344,7 @@ fn _default_deserialize[
                     print("Using the default from the metadata")
                     comptime default = metadata.value().default_value.value()
                     ref field = __struct_field_ref(i, s)
-                    var p = Parser([default])
+                    var p = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)]([default])
                     field = downcast[
                         type_of(field), JsonDeserializable
                     ].from_json(p)
@@ -575,12 +577,22 @@ __extension List(JsonDeserializableAppendable):
         s = Self()
         
         comptime if options.parsing_mode == ParseOptions.ParsingArguments:
+            print("args")
             # If we are argument parsing, consume all the values possible
             while not p.is_done():
                 s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
-        else:
+        elif options.parsing_mode == ParseOptions.ParsingOptions:
+            print("opts")
             # If we are still option parsing, lists will come as kv pairs still
             s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
+        elif options.parsing_mode == ParseOptions.ParsingDefaults:
+            print("default")
+            # Parsing a user defined default value, which will be a comma delimited string
+            for v in p.read_string().split(","):
+                var default_parser = Parser[options]([String(v)])
+                s.append(_deserialize_impl[downcast[Self.T, _Base]](default_parser))
+        else:
+            raise Error(t"Unknown parse mode: {options.parsing_mode}")
 
     @staticmethod
     fn deserialize_as_array() -> Bool:

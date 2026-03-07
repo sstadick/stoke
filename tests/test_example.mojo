@@ -12,14 +12,13 @@ from stoke.parser import Parser, ParseOptions
 # - Subcommands
 
 # TODO: add comptime validation of opt_metadata to check for:
-# -  collisions of names, especially short opts,
+# - collisions of names, especially short opts,
 # - verify defaults correctly deserialize,
 # - validate keys to make sure they match struct fields
 # - make sure there aren't more than one list of positional arguments
 
-# TODO: how to provide default values for List opts/args?
-# TODO: how to allow multiple of the same argument to make a list?
 # TODO: help message
+# TODO: baked in support for set type opts and args
 # TODO: Subcommands
 # TODO: Feature that allows for an argument list to be passed in via a file
 
@@ -45,9 +44,9 @@ struct Args(JsonDeserializable, Defaultable):
         return {
             "my_flag": OptHelp(help_msg="it's mine", default_value="False", short_opt="f"),
             "my_string": OptHelp(help_msg="it's also mine", default_value="FooBar", short_opt="s"),
-            "opt_list": OptHelp(help_msg="repreated opts", short_opt="l"),
+            "opt_list": OptHelp(help_msg="repreated opts", short_opt="l", default_value="10,11,12"),
             "arg_one": OptHelp(help_msg="First argument", is_arg=True),
-            "remaining_args": OptHelp(help_msg="Remaining arguments", is_arg=True)
+            "remaining_args": OptHelp(help_msg="Remaining arguments", is_arg=True, default_value="42,43")
         }
     
 
@@ -213,7 +212,7 @@ def test_stoke_basic_positional_args():
     assert_equal(args.my_string, "blah")
     assert_equal(args.my_custom, CustomType("John", "Doe"))
     assert_equal(args.arg_one, 42)
-    assert_equal(args.remaining_args, [])
+    assert_equal(args.remaining_args, [42, 43])
 
 def test_stoke_basic_positional_args_list():
     var parser = Parser([
@@ -289,6 +288,80 @@ def test_stoke_basic_repeated_opt_list():
     assert_equal(args.arg_one, 42)
     assert_equal(args.remaining_args, [1, 2, 3])
     assert_equal(args.opt_list, [5, 6, 7, 8])
+
+def test_stoke_jumbled_repeated_opt_list():
+    var parser = Parser([
+        s("--my-flag"),
+        s("-l"),
+        s("5"),
+        s("--my-string"),
+        s("blah"),
+        s("-l"),
+        s("6"),
+        s("--my-custom"),
+        s("John"),
+        s("Doe"),
+        s("-l"),
+        s("7"),
+        s("42"),
+        s("1"),
+        s("2"),
+        s("3"),
+        s("-l"),
+        s("8"),
+    ])
+    
+    var args = Args.from_json(parser)
+
+    assert_true(args.my_flag)
+    assert_equal(args.my_string, "blah")
+    assert_equal(args.my_custom, CustomType("John", "Doe"))
+    assert_equal(args.arg_one, 42)
+    assert_equal(args.remaining_args, [1, 2, 3])
+    assert_equal(args.opt_list, [5, 6, 7, 8])
+
+def test_stoke_default_repeated_opt_list():
+    var parser = Parser([
+        s("--my-flag"),
+        s("--my-string"),
+        s("blah"),
+        s("--my-custom"),
+        s("John"),
+        s("Doe"),
+        s("42"),
+        s("1"),
+        s("2"),
+        s("3"),
+    ])
+    
+    var args = Args.from_json(parser)
+
+    assert_true(args.my_flag)
+    assert_equal(args.my_string, "blah")
+    assert_equal(args.my_custom, CustomType("John", "Doe"))
+    assert_equal(args.arg_one, 42)
+    assert_equal(args.remaining_args, [1, 2, 3])
+    assert_equal(args.opt_list, [10,11,12])
+
+def test_stoke_default_args_list():
+    var parser = Parser([
+        s("--my-flag"),
+        s("--my-string"),
+        s("blah"),
+        s("--my-custom"),
+        s("John"),
+        s("Doe"),
+        s("42"),
+    ])
+    
+    var args = Args.from_json(parser)
+
+    assert_true(args.my_flag)
+    assert_equal(args.my_string, "blah")
+    assert_equal(args.my_custom, CustomType("John", "Doe"))
+    assert_equal(args.arg_one, 42)
+    assert_equal(args.remaining_args, [42, 43])
+    assert_equal(args.opt_list, [10,11,12])
 
 def main():
     TestSuite.discover_tests[__functions_in_module()]().run()
