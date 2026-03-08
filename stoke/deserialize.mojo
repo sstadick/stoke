@@ -82,6 +82,7 @@ trait JsonDeserializable(_Base):
     # TODO: have this as an associate const instead
     @staticmethod
     fn opt_metadata() -> Dict[String, OptHelp]:
+        print("Calling default")
         return {}
 
 trait JsonDeserializableAppendable(JsonDeserializable, Appendable):
@@ -295,7 +296,7 @@ fn _default_deserialize[
                     seen_i = True
                     matched = True
 
-            if unlikely(not matched):
+            if not matched:
                 raise Error("Unexpected field: ", candidate_ident)
 
             # p.skip_whitespace()
@@ -303,6 +304,7 @@ fn _default_deserialize[
             #     p.expect(`,`)
         
         # Check for positional arguments
+        print(materialize[type_metadata]())
         if positionals:
             var pp = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](positionals^)
             comptime for i in range(field_count):
@@ -321,6 +323,7 @@ fn _default_deserialize[
                     except e:
                         raise Error(t"Can't parse positional argument {materialize[field_names[i]]()}: {e}")
                 else:
+                    print(metadata)
                     print(t"not trying to parse {materialize[field_names[i]]()} as arg")
 
             if not pp.is_done():
@@ -348,11 +351,13 @@ fn _default_deserialize[
                     field = downcast[
                         type_of(field), JsonDeserializable
                     ].from_json(p)
-                elif __is_optional[field_types[i]]() or conforms_to(
-                    field_types[i], Defaultable
-                ):
+                elif __is_optional[field_types[i]]():
+                    # Turned off the Defaultable fallback
+                    # or conforms_to(
+                    #     field_types[i], Defaultable
+                    # ):
                     # Then check if defaultable or optional
-                    print("Using the Defaultable/Optional default")
+                    print("Using the Optional default")
                     ref field = __struct_field_ref(i, s)
                     field = downcast[type_of(field), Defaultable]()
                 else:

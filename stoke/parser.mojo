@@ -1,5 +1,7 @@
 from std.sys import argv
 
+from stoke.deserialize import JsonDeserializable, _Base
+
 
 struct ParseOptions(Equatable, TrivialRegisterPassable):
     comptime ParsingOptions: Int = 1
@@ -22,11 +24,23 @@ struct Parser[options: ParseOptions = ParseOptions()]:
 
     def __init__(out self):
         self.cursor = 0
-        self.data = [String(s) for s in argv()]
+        # Skip the first arg as it's the program name.
+        self.data = [String(s) for s in argv()[1:]]
 
     def __init__(out self, var args: List[String]):
         self.cursor = 0
         self.data = args^
+    
+    @staticmethod
+    def parse[T: JsonDeserializable & _Base]() raises -> T:
+        var parser = Parser()
+        return T.from_json(parser)
+
+    @staticmethod
+    def parse[T: JsonDeserializable & _Base](var args: List[String]) raises -> T:
+        var parser = Parser(args^)
+        return T.from_json(parser)
+
 
     def is_done(read self) -> Bool:
         return self.cursor == len(self.data)

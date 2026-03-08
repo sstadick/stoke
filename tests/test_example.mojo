@@ -16,11 +16,14 @@ from stoke.parser import Parser, ParseOptions
 # - verify defaults correctly deserialize,
 # - validate keys to make sure they match struct fields
 # - make sure there aren't more than one list of positional arguments
+# TODO: add comptime check for opt_metadata raises and non-raises
 
 # TODO: help message
 # TODO: baked in support for set type opts and args
 # TODO: Subcommands
 # TODO: Feature that allows for an argument list to be passed in via a file
+# TODO: no way to make an opt required, it will fall back to the Defaultable
+# TODO: use something like the test suite method to do subcommands, parse the fun names to get the subcommand names? Or have the fns return a string literal or something? 
 
 @fieldwise_init
 struct Args(JsonDeserializable, Defaultable):
@@ -45,7 +48,7 @@ struct Args(JsonDeserializable, Defaultable):
             "my_flag": OptHelp(help_msg="it's mine", default_value="False", short_opt="f"),
             "my_string": OptHelp(help_msg="it's also mine", default_value="FooBar", short_opt="s"),
             "opt_list": OptHelp(help_msg="repreated opts", short_opt="l", default_value="10,11,12"),
-            "arg_one": OptHelp(help_msg="First argument", is_arg=True),
+            "arg_one": OptHelp(help_msg="First argument", is_arg=True, default_value="99"),
             "remaining_args": OptHelp(help_msg="Remaining arguments", is_arg=True, default_value="42,43")
         }
     
@@ -159,11 +162,9 @@ def test_stoke_defaultable_default():
         s("--my-flag"),
     ])
     
-    var args = Args.from_json(parser)
-
-    assert_true(args.my_flag)
-    assert_equal(args.my_string, "blah")
-    assert_equal(args.my_custom, CustomType("Darth", "Vadar"))
+    # Confirm it DOES NOT fall back to using defaultable
+    with assert_raises(contains="Missing key"):
+        var args = Args.from_json(parser)
 
 def test_stoke_unexpected_value_after_flag():
     var parser = Parser([
