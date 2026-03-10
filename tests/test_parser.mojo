@@ -39,12 +39,12 @@ struct Args(JsonDeserializable, Defaultable):
     var remaining_args: Opt[List[Int], help="Remaining args", is_arg=True, default="42,43"]
 
     fn __init__(out self):
-        self.my_flag = type_of(self.my_flag)(False)
-        self.my_string = type_of(self.my_string)("bar")
-        self.my_custom = type_of(self.my_custom)(CustomType())
-        self.opt_list = type_of(self.opt_list)([])
-        self.arg_one = type_of(self.arg_one)(1)
-        self.remaining_args = type_of(self.remaining_args)([])
+        self.my_flag = {False}
+        self.my_string = {"bar"}
+        self.my_custom = {CustomType()}
+        self.opt_list = {[]}
+        self.arg_one = {1}
+        self.remaining_args = {[]}
     
 
 @fieldwise_init
@@ -354,6 +354,21 @@ def test_stoke_default_args_list() raises:
     assert_equal(args.arg_one.value, 42)
     assert_equal(args.remaining_args.value, [42, 43])
     assert_equal(args.opt_list.value, [10,11,12])
+
+@fieldwise_init
+struct ArgsBare(JsonDeserializable, Defaultable):
+    var my_int: Int
+    var complex: Opt[List[String], long="complex", short="c", default="cat,mouse,dog"]
+
+    fn __init__(out self):
+        self.my_int = Int()
+        self.complex = {[]}
+    
+def test_bare_args() raises:
+    var parser = Parser(["--my-int", "4", "--complex", "snake", "-c", "snail", "--complex", "cow"])
+    var args = ArgsBare.from_json(parser)
+    assert_equal(args.my_int, 4)
+    assert_equal(args.complex.value, ["snake", "snail", "cow"])
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

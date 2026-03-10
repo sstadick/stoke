@@ -24,6 +24,7 @@ trait JsonDeserializable(_Base):
     fn from_json[
         options: ParseOptions, //
     ](mut p: Parser[options], out s: Self) raises:
+        # TODO: add the comptime validation check here to confirm all defaults parse, no opts collide, only one list of positional args
         s = _default_deserialize[Self, Self.deserialize_as_array()](p)
 
     @staticmethod
@@ -33,9 +34,7 @@ trait JsonDeserializable(_Base):
 trait JsonDeserializableAppendable(JsonDeserializable, Appendable):
     fn append_from_json[options: ParseOptions, //](mut self, mut p: Parser[options]) raises:
         ...
-        # var deser = _deserialize_impl[downcast[Self.T, _Base]](p) # _Base
-        # var value = trait_downcast_var[Copyable&_Base](deser^) # implicitly Self.T
-        # self.append_to(value^)
+
 
 trait Appendable(_Base):
     fn append_to(mut self, var value: Some[Copyable & _Base]):
@@ -43,6 +42,7 @@ trait Appendable(_Base):
 
 trait Optable(JsonDeserializable):
     comptime opt_help: String
+    # TODO: needs parametric traits so this doesn't have to be a string
     comptime opt_default: Optional[String]
     comptime opt_long: Optional[String]
     comptime opt_short: Optional[String]
@@ -52,6 +52,7 @@ trait Optable(JsonDeserializable):
     # Needed untill MOCO-3413 is resolved (conforms_to does not respect where clause and will return True even for where-gated traits)
     comptime opt_is_appendable: Bool
 
+import std.sys
 
 struct Opt[
         T: JsonDeserializable,
@@ -67,11 +68,18 @@ struct Opt[
     comptime opt_short = Self.short
     comptime opt_is_arg = Self.is_arg
     comptime opt_is_flag = _type_is_eq[Self.T, Bool]()
+
+    # Needed until MOCO-3413 is resolved (conforms_to does not respect where clause and will return True even for where-gated traits)
     comptime opt_is_appendable = conforms_to(Self.T, JsonDeserializableAppendable)
 
     var value: Self.T
 
     fn __init__(out self, var value: Self.T):
+        # TODO: move this to the JsonDeserializable method?
+        # Comptime validate that the default is parsable
+        comptime if Self.opt_default:
+            comptime if not Self.__valid_default():
+                abort(t"Invalid default value {Self.opt_default.value()} for type {get_type_name[Self]()})")
         self.value = value^
     
     @staticmethod
@@ -85,7 +93,16 @@ struct Opt[
     fn append_to(mut self, var value: Some[Copyable & _Base]) where conforms_to(Self.T, Appendable):
         trait_downcast[Appendable](self.value).append_to(value^)
 
-    
+    @staticmethod
+    fn __valid_default() -> Bool:
+        if Self.opt_default:
+            try:
+                var p = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)]([Self.opt_default.value()])
+                var _ = _deserialize_impl[Self.T](p)
+            except e:
+                return False
+        return True
+        
 
 @always_inline
 fn try_deserialize[T: _Base](s: List[StaticString]) -> Optional[T]:
@@ -232,7 +249,6 @@ fn _default_deserialize[
         ]()]()
 
         var positionals: List[String] = []
-        # while p.peek() != `}`:
         while not p.is_done():
             var candidate_ident = p.read_string()
             if candidate_ident== "--help" or candidate_ident== "-h":
@@ -302,9 +318,6 @@ fn _default_deserialize[
             if not matched:
                 raise Error("Unexpected field: ", candidate_ident)
 
-            # p.skip_whitespace()
-            # if p.peek() != `}`:
-            #     p.expect(`,`)
         
         # Check for positional arguments
         if positionals:
