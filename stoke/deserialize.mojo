@@ -17,56 +17,7 @@ from std.hashlib.hasher import Hasher
 
 
 comptime non_struct_error = "Cannot deserialize non-struct type"
-
-
 comptime _Base = ImplicitlyDestructible & Movable
-
-
-# TODO: What we need to be doing is passing in our cli-parser object
-# that should be able to give back fields by name I think
-
-
-struct OptHelp(Copyable, Hashable, Writable, _Base):
-    var help_msg: String
-    """Help message to display."""
-
-    var default_value: Optional[String]
-    """String version of a default value.
-
-    If None, this is a required option.
-    """
-
-    var long_opt: Optional[String]
-    """The long option name to use, ex: `--my-value`.
-    
-    If this is None, the field name will be used, with `_` converted to `-`.
-    Note that if a value is provided, no transformation will be applied to it.
-    """
-
-    var short_opt: Optional[String]
-    """The short option name to use, ex: `-v`.
-
-    If this is None, no short options be allowed for this field.
-    """
-
-    var is_arg: Bool
-    """Whether or not this is a positional argument."""
-
-    fn __init__(
-        out self,
-        *,
-        help_msg: String,
-        default_value: Optional[String] = None,
-        long_opt: Optional[String] = None,
-        short_opt: Optional[String] = None,
-        is_arg: Bool = False
-    ):
-        self.help_msg = help_msg
-        self.default_value = default_value
-        self.long_opt = long_opt
-        self.short_opt = short_opt
-        self.is_arg = is_arg
-
 
 trait JsonDeserializable(_Base):
     @staticmethod
@@ -79,21 +30,61 @@ trait JsonDeserializable(_Base):
     fn deserialize_as_array() -> Bool:
         return False
 
-    # TODO: have this as an associate const instead
-    @staticmethod
-    fn opt_metadata() -> Dict[String, OptHelp]:
-        print("Calling default")
-        return {}
-
 trait JsonDeserializableAppendable(JsonDeserializable, Appendable):
     fn append_from_json[options: ParseOptions, //](mut self, mut p: Parser[options]) raises:
-        # comptime assert(conforms_to(Self, Appendable))
         ...
-
+        # var deser = _deserialize_impl[downcast[Self.T, _Base]](p) # _Base
+        # var value = trait_downcast_var[Copyable&_Base](deser^) # implicitly Self.T
+        # self.append_to(value^)
 
 trait Appendable(_Base):
     fn append_to(mut self, var value: Some[Copyable & _Base]):
         ...
+
+trait Optable(JsonDeserializable):
+    comptime opt_help: String
+    comptime opt_default: Optional[String]
+    comptime opt_long: Optional[String]
+    comptime opt_short: Optional[String]
+    comptime opt_is_arg: Bool
+    comptime opt_is_flag: Bool
+
+    # Needed untill MOCO-3413 is resolved (conforms_to does not respect where clause and will return True even for where-gated traits)
+    comptime opt_is_appendable: Bool
+
+
+struct Opt[
+        T: JsonDeserializable,
+        help: String="",
+        default: Optional[String]=None,
+        long: Optional[String]=None,
+        short: Optional[String]=None,
+        is_arg: Bool=False
+    ](JsonDeserializable, Writable, Optable, JsonDeserializableAppendable where conforms_to(T, JsonDeserializableAppendable)):
+    comptime opt_help = Self.help
+    comptime opt_default = Self.default
+    comptime opt_long = Self.long
+    comptime opt_short = Self.short
+    comptime opt_is_arg = Self.is_arg
+    comptime opt_is_flag = _type_is_eq[Self.T, Bool]()
+    comptime opt_is_appendable = conforms_to(Self.T, JsonDeserializableAppendable)
+
+    var value: Self.T
+
+    fn __init__(out self, var value: Self.T):
+        self.value = value^
+    
+    @staticmethod
+    fn from_json[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises:
+        # __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(s))
+        s = Self(_deserialize_impl[Self.T](p))
+    
+    fn append_from_json[options: ParseOptions, //](mut self, mut p: Parser[options]) raises where conforms_to(Self.T, JsonDeserializableAppendable):
+        trait_downcast[JsonDeserializableAppendable](self.value).append_from_json(p)
+
+    fn append_to(mut self, var value: Some[Copyable & _Base]) where conforms_to(Self.T, Appendable):
+        trait_downcast[Appendable](self.value).append_to(value^)
+
     
 
 @always_inline
@@ -148,6 +139,9 @@ fn __is_appendable[T: AnyType]() -> Bool:
 fn __is_default[T: AnyType]() -> Bool:
     return get_base_type_name[T]() == "Default"
 
+@always_inline
+fn __is_opt[T: AnyType]() -> Bool:
+    return get_base_type_name[T]() == "Opt"
 
 fn __all_dtors_are_trivial[T: AnyType]() -> Bool:
     comptime field_types = struct_field_types[T]()
@@ -172,28 +166,30 @@ fn __to_ident(s: String) -> String:
 
 fn __possible_idents[T: JsonDeserializable]() -> Dict[String, String]:
     """ """
-    comptime metadata = T.opt_metadata()
     comptime field_names = struct_field_names[T]()
+    comptime field_types = struct_field_types[T]()
+
     var ret: Dict[String, String] = {}
     comptime for i in range(0, len(field_names)):
         comptime name = field_names[i]
 
-        comptime opts = metadata.get(name)
-        if opts:
-            if opts.value().short_opt:
-                if opts.value().short_opt.value() in ret:
+        comptime if __is_opt[field_types[i]]():
+            comptime o = downcast[field_types[i], Optable]
+            if o.opt_long:
+                if o.opt_long.value() in ret:
                     abort(
-                        "Duplicate key: " + opts.value().short_opt.value()
+                        "Duplicate key: " + o.opt_long.value()
                     )
-                ret[opts.value().short_opt.value()] = String(name)
-            if opts.value().long_opt:
-                if opts.value().long_opt.value() in ret:
+                ret[o.opt_long.value()] = String(name)
+            if o.opt_short:
+                if o.opt_short.value() in ret:
                     abort(
-                        "Duplicate key: " + opts.value().long_opt.value()
+                        "Duplicate key: " + o.opt_short.value()
                     )
-                ret[opts.value().long_opt.value()] = String(name)
+                ret[o.opt_short.value()] = String(name)
 
         ret[__to_ident(name)] = String(name)
+
     return ret^
 
 
@@ -231,7 +227,6 @@ fn _default_deserialize[
         # maybe an optimization since the InlineArray ctor uses a for loop
         # but according to the IR this will just inline the computed values
         var seen = materialize[InlineArray[Bool, field_count](fill=False)]()
-        comptime type_metadata = downcast[T, JsonDeserializable].opt_metadata()
         var possible_idents = materialize[__possible_idents[
             downcast[T, JsonDeserializable]
         ]()]()
@@ -257,31 +252,42 @@ fn _default_deserialize[
             var matched = False
             comptime for i in range(field_count):
                 comptime name = field_names[i]
+                comptime field_type = field_types[i]
+                comptime is_optable = conforms_to(field_type, Optable)
 
                 if ident.value() == name:
                     ref seen_i = seen.unsafe_get(i)
 
 
-                    comptime if Bool(type_metadata.get(name)) and type_metadata.get(name).value().is_arg:
+                    comptime if is_optable and downcast[field_type, Optable].opt_is_arg:
                         raise Error(name, "is a positional argument, not an option.")
 
                     
                     ref field = __struct_field_ref(i, s)
                     comptime TField = downcast[type_of(field), _Base]
+                    comptime is_appendable = __is_appendable[TField]() and (not is_optable or downcast[field_type, Optable].opt_is_appendable)
 
-                    # Special handling of bool fields, which are flags
-                    comptime if __is_appendable[TField]():
+                    comptime if is_appendable:
                         # TODO: add the append_from_json method to the trait, default to explode if not a list
                         trait_downcast[JsonDeserializableAppendable](field).append_from_json(p)
-                    elif _type_is_eq[TField, Bool]():
+                    elif _type_is_eq[TField, Bool]() or (is_optable and downcast[field_type, Optable].opt_is_flag):
                         if seen_i:
                             raise Error("Duplicate key: ", name)
-                        comptime if Bool(type_metadata.get(name)) and Bool(type_metadata.get(name).value().default_value):
+                        comptime if is_optable and Bool(downcast[field_type, Optable].opt_default):
                             # Invert whatever the supplied default was
-                            comptime value = type_metadata.get(name).value().default_value.value()
-                            var p = Parser([value])
-                            field = downcast[TField, JsonDeserializable].from_json(p)
-                            field = rebind[TField](not rebind[Bool](field))
+                            comptime value = downcast[field_type, Optable].opt_default.value()
+                            var p_bool = Parser([value])
+                            var b = downcast[Bool, JsonDeserializable].from_json(p_bool)
+                            if b:
+                                # Was true, invert
+                                var p = Parser(["False"])
+                                field = downcast[TField, JsonDeserializable].from_json(p)
+                            else:
+                                var p = Parser(["True"])
+                                field = downcast[TField, JsonDeserializable].from_json(p)
+                        elif is_optable:
+                                var p = Parser(["True"])
+                                field = downcast[TField, JsonDeserializable].from_json(p)
                         else:
                             # Since the default for bool is False, invert it to true
                             field = rebind[TField](True)
@@ -304,11 +310,12 @@ fn _default_deserialize[
         if positionals:
             var pp = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](positionals^)
             comptime for i in range(field_count):
-                comptime metadata = type_metadata.get(field_names[i])
+                comptime is_optable = conforms_to(field_types[i], Optable)
+
                 if pp.is_done():
                     break
 
-                comptime if Bool(metadata) and metadata.value().is_arg:
+                comptime if is_optable and downcast[field_types[i], Optable].opt_is_arg:
                     ref seen_i = seen.unsafe_get(i)
                     seen_i = True
                     ref field = __struct_field_ref(i, s)
@@ -317,8 +324,6 @@ fn _default_deserialize[
                         field = _deserialize_impl[TField](pp)
                     except e:
                         raise Error(t"Can't parse positional argument {materialize[field_names[i]]()}: {e}")
-                else:
-                    print(metadata)
 
             if not pp.is_done():
                 raise Error("Unexpected fields: ", pp.data)
@@ -327,17 +332,13 @@ fn _default_deserialize[
         comptime for i in range(field_count):
             # We didn't find a key value pairing
             if not seen.unsafe_get(i):
-                comptime metadata = downcast[
-                    T, JsonDeserializable
-                ].opt_metadata().get(field_names[i])
+                comptime is_optable = conforms_to(field_types[i], Optable)
 
                 # TODO: make issue for this?
                 # Must wrap in bool to avoid incompatable type error
-                comptime if Bool(metadata) and Bool(
-                    metadata.value().default_value
-                ):
+                comptime if is_optable and Bool(downcast[field_types[i], Optable].opt_default):
                     # First try to get a default from the metadata
-                    comptime default = metadata.value().default_value.value()
+                    comptime default = downcast[field_types[i], Optable].opt_default.value()
                     ref field = __struct_field_ref(i, s)
                     var p = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)]([default])
                     field = downcast[
@@ -349,7 +350,6 @@ fn _default_deserialize[
                     #     field_types[i], Defaultable
                     # ):
                     # Then check if defaultable or optional
-                    print("Using the Optional default")
                     ref field = __struct_field_ref(i, s)
                     field = downcast[type_of(field), Defaultable]()
                 else:
@@ -385,11 +385,6 @@ __extension String(JsonDeserializable):
     fn deserialize_as_array() -> Bool:
         return False
 
-    @staticmethod
-    fn opt_metadata() -> Dict[String, OptHelp]:
-        return {}
-
-
 __extension Int(JsonDeserializable):
 
     fn from_json[
@@ -400,10 +395,6 @@ __extension Int(JsonDeserializable):
     @staticmethod
     fn deserialize_as_array() -> Bool:
         return False
-
-    @staticmethod
-    fn opt_metadata() -> Dict[String, OptHelp]:
-        return {}
 
 
 __extension Bool(JsonDeserializable):
@@ -417,10 +408,6 @@ __extension Bool(JsonDeserializable):
     @staticmethod
     fn deserialize_as_array() -> Bool:
         return False
-
-    @staticmethod
-    fn opt_metadata() -> Dict[String, OptHelp]:
-        return {}
 
 
 # __extension SIMD(JsonDeserializable):
@@ -578,10 +565,6 @@ __extension List(JsonDeserializableAppendable):
     @staticmethod
     fn deserialize_as_array() -> Bool:
         return False
-
-    @staticmethod
-    fn opt_metadata() -> Dict[String, OptHelp]:
-        return {}
 
 
 # __extension Dict(JsonDeserializable):
