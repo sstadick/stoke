@@ -24,7 +24,23 @@ trait JsonDeserializable(_Base):
     fn from_json[
         options: ParseOptions, //
     ](mut p: Parser[options], out s: Self) raises:
-        # TODO: add the comptime validation check here to confirm all defaults parse, no opts collide, only one list of positional args
+        # Validate that there aren't conflicting idents
+        comptime _ = __possible_idents[Self]()
+
+        comptime field_count = struct_field_count[Self]()
+        comptime field_names = struct_field_names[Self]()
+        comptime field_types = struct_field_types[Self]()
+
+        # Check that all defaults are valid
+        comptime for i in range(field_count):
+            comptime if conforms_to(field_types[i], Optable):
+                comptime if not downcast[field_types[i],Optable].__valid_default():
+                    abort(t"TOP: Invalid default value {downcast[field_types[i], Optable].opt_default.value()} for type {get_type_name[Self]()})")
+
+        # Check that there is only one args list
+        comptime if not __at_most_one_args_appendable[Self]():
+            abort(t"Multiple possible Appendable arguments for {get_type_name[Self]()}.")
+
         s = _default_deserialize[Self, Self.deserialize_as_array()](p)
 
     @staticmethod
@@ -52,6 +68,10 @@ trait Optable(JsonDeserializable):
     # Needed untill MOCO-3413 is resolved (conforms_to does not respect where clause and will return True even for where-gated traits)
     comptime opt_is_appendable: Bool
 
+    @staticmethod
+    fn __valid_default() -> Bool:
+        ...
+
 import std.sys
 
 struct Opt[
@@ -61,7 +81,14 @@ struct Opt[
         long: Optional[String]=None,
         short: Optional[String]=None,
         is_arg: Bool=False
-    ](JsonDeserializable, Writable, Optable, JsonDeserializableAppendable where conforms_to(T, JsonDeserializableAppendable)):
+    ](
+        JsonDeserializable,
+        Writable, 
+        Optable,
+        JsonDeserializableAppendable where conforms_to(T, JsonDeserializableAppendable),
+        Equatable where conforms_to(T, Equatable),
+        Boolable where conforms_to(T, Boolable)
+    ):
     comptime opt_help = Self.help
     comptime opt_default = Self.default
     comptime opt_long = Self.long
@@ -77,9 +104,8 @@ struct Opt[
     fn __init__(out self, var value: Self.T):
         # TODO: move this to the JsonDeserializable method?
         # Comptime validate that the default is parsable
-        comptime if Self.opt_default:
-            comptime if not Self.__valid_default():
-                abort(t"Invalid default value {Self.opt_default.value()} for type {get_type_name[Self]()})")
+        comptime if not Self.__valid_default():
+            abort(t"Invalid default value {Self.opt_default.value()} for type {get_type_name[Self]()})")
         self.value = value^
     
     @staticmethod
@@ -102,6 +128,12 @@ struct Opt[
             except e:
                 return False
         return True
+    
+    fn __bool__(self) -> Bool where conforms_to(Self.T, Boolable):
+        return trait_downcast[Boolable](self.value).__bool__()
+    
+    fn __eq__(self, other: Self) -> Bool where conforms_to(Self.T, Equatable):
+        return trait_downcast[Equatable](self.value).__eq__(trait_downcast[Equatable](other.value))
         
 
 @always_inline
@@ -180,6 +212,26 @@ fn __to_ident(s: String) -> String:
     var fixed = s.replace("-", "_")
     return fixed
 
+fn __at_most_one_args_appendable[T: JsonDeserializable]() -> Bool:
+    comptime field_names = struct_field_names[T]()
+    comptime field_types = struct_field_types[T]()
+
+    var count = 0
+    comptime for i in range(0, len(field_names)):
+        comptime is_optable = conforms_to(field_types[i], Optable) 
+        # Needed untill MOCO-3413 is resolved (conforms_to does not respect where clause and will return True even for where-gated traits)
+        comptime is_appendable = __is_appendable[field_types[i]]() and (not is_optable or downcast[field_types[i], Optable].opt_is_appendable)
+        comptime if (
+            is_optable and
+            downcast[field_types[i], Optable].opt_is_arg and
+            is_appendable
+        ):
+            count += 1
+            if count == 2:
+                break
+    return count < 2
+
+
 
 fn __possible_idents[T: JsonDeserializable]() -> Dict[String, String]:
     """ """
@@ -195,13 +247,13 @@ fn __possible_idents[T: JsonDeserializable]() -> Dict[String, String]:
             if o.opt_long:
                 if o.opt_long.value() in ret:
                     abort(
-                        "Duplicate key: " + o.opt_long.value()
+                        t"Duplicate long opt `{o.opt_long.value()}` in {get_type_name[T]()} on field {name}."
                     )
                 ret[o.opt_long.value()] = String(name)
             if o.opt_short:
                 if o.opt_short.value() in ret:
                     abort(
-                        "Duplicate key: " + o.opt_short.value()
+                        t"Duplicate short opt `{o.opt_short.value()}` in {get_type_name[T]()} on field {name}."
                     )
                 ret[o.opt_short.value()] = String(name)
 

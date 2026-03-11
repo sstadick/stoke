@@ -4,6 +4,7 @@ from std.testing import assert_equal, assert_raises, assert_true, assert_false, 
 from stoke.deserialize import JsonDeserializable, Opt 
 from stoke.parser import Parser, ParseOptions
 
+from stoke.ext import *
 
 def test_limited() raises:
     comptime x: List[Int] = [1, 2, 3]
@@ -16,13 +17,6 @@ def test_limited() raises:
 # - Help messages
 # - Long and short opts
 # - Subcommands
-
-# TODO: add comptime validation of opt_metadata to check for:
-# - collisions of names, especially short opts,
-# - verify defaults correctly deserialize,
-# - validate keys to make sure they match struct fields
-# - make sure there aren't more than one list of positional arguments
-# TODO: add comptime check for opt_metadata raises and non-raises
 
 # TODO: help message
 # TODO: baked in support for set type opts and args
@@ -48,13 +42,23 @@ struct Args(JsonDeserializable, Defaultable):
     
 
 @fieldwise_init
-struct CustomType(JsonDeserializable, Defaultable, Equatable, Writable):
+struct CustomType(JsonDeserializable, Defaultable, Equatable, Writable, Copyable):
     var first_name: String
     var last_name: String
 
     fn __init__(out self):
         self.first_name = "Darth"
         self.last_name = "Vadar"
+    
+    @implicit
+    fn __init__[
+        help: String,
+        default: Optional[String],
+        long: Optional[String],
+        short: Optional[String],
+        is_arg: Bool
+    ](out self, opt: Opt[Self, help, default, long, short, is_arg]):
+        self = opt.value.copy()
 
     @staticmethod
     fn from_json[
@@ -348,12 +352,12 @@ def test_stoke_default_args_list() raises:
     
     var args = Args.from_json(parser)
 
-    assert_true(args.my_flag.value)
-    assert_equal(args.my_string.value, "blah")
-    assert_equal(args.my_custom.value, CustomType("John", "Doe"))
-    assert_equal(args.arg_one.value, 42)
-    assert_equal(args.remaining_args.value, [42, 43])
-    assert_equal(args.opt_list.value, [10,11,12])
+    assert_true(args.my_flag)
+    assert_equal("blah", args.my_string)
+    assert_equal(CustomType("John", "Doe"), args.my_custom)
+    assert_equal(42, args.arg_one)
+    assert_equal([42, 43], args.remaining_args, )
+    assert_equal([10,11,12], args.opt_list)
 
 @fieldwise_init
 struct ArgsBare(JsonDeserializable, Defaultable):
