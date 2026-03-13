@@ -14,7 +14,9 @@ from std.collections import Set
 from std.memory import ArcPointer, OwnedPointer
 from std.sys.intrinsics import unlikely, _type_is_eq
 from std.hashlib.hasher import Hasher
+import std.sys
 
+from stoke.help import get_help
 
 comptime non_struct_error = "Cannot deserialize non-struct type"
 comptime _Base = ImplicitlyDestructible & Movable
@@ -46,6 +48,10 @@ trait JsonDeserializable(_Base):
     @staticmethod
     fn deserialize_as_array() -> Bool:
         return False
+
+    @staticmethod
+    fn description() -> String:
+        return ""
 
 trait JsonDeserializableAppendable(JsonDeserializable, Appendable):
     fn append_from_json[options: ParseOptions, //](mut self, mut p: Parser[options]) raises:
@@ -149,10 +155,6 @@ fn try_deserialize[
     except:
         return None
 
-
-# TODO: version that takes a list
-
-
 @always_inline
 fn deserialize[T: _Base](s: VariadicList[StaticString], out res: T) raises:
     res = deserialize[T](Parser(s))
@@ -170,7 +172,6 @@ fn deserialize[
     options: ParseOptions, //, T: _Base
 ](var p: Parser[options], out res: T) raises:
     res = _deserialize_impl[T](p)
-
 
 @always_inline
 fn __is_optional[T: AnyType]() -> Bool:
@@ -211,6 +212,7 @@ fn __to_ident(s: String) -> String:
 
     var fixed = s.replace("-", "_")
     return fixed
+
 
 fn __at_most_one_args_appendable[T: JsonDeserializable]() -> Bool:
     comptime field_names = struct_field_names[T]()
@@ -305,9 +307,10 @@ fn _default_deserialize[
             var candidate_ident = p.read_string()
             if candidate_ident== "--help" or candidate_ident== "-h":
                 # TODO: need a "print_help[T]()" fn that can be called
-                print("HELP")
-            else:
-                print(t"ident {candidate_ident}")
+                comptime help = get_help[downcast[T, JsonDeserializable]]()
+                print(help)
+                std.sys.exit(0)
+                # TODO: exit or raise?
 
             var ident = possible_idents.get(__to_ident(candidate_ident))
 
@@ -433,6 +436,20 @@ fn _deserialize_impl[
     else:
         s = _default_deserialize[T, False](p)
 
+struct LoadExts:
+    """Force extension to be registered.
+
+    There seems to be a bug of some sort where extensions aren't
+    available in scope until they've been called or something.
+    """
+    comptime ListC = conforms_to(type_of(List[Int]()), JsonDeserializable)
+    comptime StringC = conforms_to(type_of(String()), JsonDeserializable)
+    comptime BoolC = conforms_to(type_of(Bool()), JsonDeserializable)
+    comptime IntC = conforms_to(type_of(Int()), JsonDeserializable)
+    comptime FullConformance = Self.ListC and Self.StringC and Self.BoolC and Self.IntC
+
+    fn __init__(out self):
+        pass
 
 # ===============================================
 # Primitives
@@ -450,6 +467,9 @@ __extension String(JsonDeserializable):
     fn deserialize_as_array() -> Bool:
         return False
 
+    @staticmethod
+    fn description() -> String:
+        return ""
 __extension Int(JsonDeserializable):
 
     fn from_json[
@@ -460,6 +480,10 @@ __extension Int(JsonDeserializable):
     @staticmethod
     fn deserialize_as_array() -> Bool:
         return False
+
+    @staticmethod
+    fn description() -> String:
+        return ""
 
 
 __extension Bool(JsonDeserializable):
@@ -474,6 +498,9 @@ __extension Bool(JsonDeserializable):
     fn deserialize_as_array() -> Bool:
         return False
 
+    @staticmethod
+    fn description() -> String:
+        return ""
 
 # __extension SIMD(JsonDeserializable):
 #     @staticmethod
@@ -630,6 +657,10 @@ __extension List(JsonDeserializableAppendable):
     @staticmethod
     fn deserialize_as_array() -> Bool:
         return False
+
+    @staticmethod
+    fn description() -> String:
+        return ""
 
 
 # __extension Dict(JsonDeserializable):

@@ -1,3 +1,4 @@
+import stoke.deserialize
 from std.reflection import get_function_name, get_type_name
 from std.sys import argv
 from std.sys.intrinsics import _type_is_eq
@@ -54,6 +55,7 @@ struct Stoke(Movable):
         # https://github.com/modular/modular/blob/2e6b98d33b02b91366b5fb79141c528473c6903c/mojo/stdlib/std/testing/suite.mojo#L450
         comptime for idx in range(len(stoke_funcs)):
             comptime stoke_func = stoke_funcs[idx]
+            print(get_function_name[stoke_func]())
 
             comptime if get_function_name[stoke_func]().startswith("stoke_"):
                 comptime if _type_is_eq[type_of(stoke_func), _StokeCommand.fn_type]():

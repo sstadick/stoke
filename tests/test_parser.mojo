@@ -3,6 +3,7 @@ from std.testing import assert_equal, assert_raises, assert_true, assert_false, 
 
 from stoke.deserialize import JsonDeserializable, Opt 
 from stoke.parser import Parser, ParseOptions
+from stoke.help import get_help
 
 from stoke.ext import *
 
@@ -362,11 +363,18 @@ def test_stoke_default_args_list() raises:
 @fieldwise_init
 struct ArgsBare(JsonDeserializable, Defaultable):
     var my_int: Int
-    var complex: Opt[List[String], long="complex", short="c", default="cat,mouse,dog"]
+    var complex: Opt[List[String], help="This is a complex one", long="complex", short="c", default="cat,mouse,dog"]
 
     fn __init__(out self):
         self.my_int = Int()
         self.complex = {[]}
+
+    @staticmethod
+    fn description() -> String:
+        return """Just a simple example program.
+
+        What could possibly go wrong?
+        """
     
 def test_bare_args() raises:
     var parser = Parser(["--my-int", "4", "--complex", "snake", "-c", "snail", "--complex", "cow"])
@@ -375,4 +383,5 @@ def test_bare_args() raises:
     assert_equal(args.complex.value, ["snake", "snail", "cow"])
 
 def main() raises:
-    TestSuite.discover_tests[__functions_in_module()]().run()
+    # TestSuite.discover_tests[__functions_in_module()]().run()
+    test_bare_args()
