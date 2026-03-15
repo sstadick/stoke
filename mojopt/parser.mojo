@@ -1,6 +1,6 @@
 from std.sys import argv
 
-from stoke.deserialize import JsonDeserializable, _Base
+from mojopt.deserialize import MojOptDeserializable, _Base
 
 
 struct ParseOptions(Equatable, TrivialRegisterPassable):
@@ -32,14 +32,14 @@ struct Parser[options: ParseOptions = ParseOptions()]:
         self.data = args^
     
     @staticmethod
-    def parse[T: JsonDeserializable & _Base]() raises -> T:
+    def parse[T: MojOptDeserializable & _Base]() raises -> T:
         var parser = Parser()
-        return T.from_json(parser)
+        return T.from_opts(parser)
 
     @staticmethod
-    def parse[T: JsonDeserializable & _Base](var args: List[String]) raises -> T:
+    def parse[T: MojOptDeserializable & _Base](var args: List[String]) raises -> T:
         var parser = Parser(args^)
-        return T.from_json(parser)
+        return T.from_opts(parser)
 
 
     fn is_done(read self) -> Bool:
@@ -70,8 +70,3 @@ struct Parser[options: ParseOptions = ParseOptions()]:
     def read_int(mut self) raises -> Int:
         var value = self._get_next()
         return atol(value)
-
-    @always_inline
-    @classmethod
-    fn mark_initialized(s: Self):
-        __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(s))

@@ -1,12 +1,12 @@
 from std.testing import assert_equal, assert_raises, assert_true, assert_false, TestSuite
 
-from stoke.deserialize import JsonDeserializable, OptHelp
-from stoke.parser import Parser, ParseOptions
-from stoke import Stoke
+from mojopt.deserialize import MojOptDeserializable, OptHelp
+from mojopt.parser import Parser, ParseOptions
+from mojopt import MojOpt
 
 
 @fieldwise_init
-struct Args(JsonDeserializable, Defaultable):
+struct Args(MojOptDeserializable, Defaultable):
     var my_flag: Bool
     var my_string: String
     var my_custom: CustomType
@@ -34,7 +34,7 @@ struct Args(JsonDeserializable, Defaultable):
     
 
 @fieldwise_init
-struct CustomType(JsonDeserializable, Defaultable, Equatable, Writable):
+struct CustomType(MojOptDeserializable, Defaultable, Equatable, Writable):
     var first_name: String
     var last_name: String
 
@@ -43,7 +43,7 @@ struct CustomType(JsonDeserializable, Defaultable, Equatable, Writable):
         self.last_name = "Vadar"
 
     @staticmethod
-    fn from_json[
+    fn parse[
         options: ParseOptions, //
     ](mut p: Parser[options], out s: Self) raises:
         # __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(s))
@@ -55,21 +55,21 @@ struct CustomType(JsonDeserializable, Defaultable, Equatable, Writable):
     fn opt_metadata() -> Dict[String, OptHelp]:
         return {}
 
-def stoke_subcmd_a(var argv: List[String]):
+def mojopt_subcmd_a(var argv: List[String]):
     var args = Parser.parse[Args](argv^)
     assert_true(args.my_flag)
     assert_equal(args.my_string, "blah")
     assert_equal(args.my_custom, CustomType("John", "Doe"))
 
-def stoke_main(var argv: List[String]):
+def mojopt_main(var argv: List[String]):
     var args = Parser.parse[Args](argv^)
     assert_true(args.my_flag)
     assert_equal(args.my_string, "blah")
     assert_equal(args.my_custom, CustomType("John", "Doe"))
 
-def test_stoke_main():
+def test_mojopt_main():
     # N.B. can't use __functions_in_module as that ends up recursively instantiating the test_ fns
-    Stoke.register_commands[(stoke_main, stoke_subcmd_a)]([
+    MojOpt.register_commands[(mojopt_main, mojopt_subcmd_a)]([
         "--my-flag",
         "--my-string",
         "blah",
@@ -78,9 +78,9 @@ def test_stoke_main():
         "Doe"
     ]).run()
 
-def test_stoke_subcmd_a():
+def test_mojopt_subcmd_a():
     # N.B. can't use __functions_in_module as that ends up recursively instantiating the test_ fns
-    Stoke.register_commands[(stoke_main, stoke_subcmd_a)]([
+    MojOpt.register_commands[(mojopt_main, mojopt_subcmd_a)]([
         "subcmd-a",
         "--my-flag",
         "--my-string",
@@ -90,10 +90,10 @@ def test_stoke_subcmd_a():
         "Doe"
     ]).run()
 
-def test_stoke_invalid_subcmd_no_main():
+def test_mojopt_invalid_subcmd_no_main():
     # With no main, should fail at subcommand matching step
     with assert_raises(contains="No matching command for"):
-        Stoke.register_commands[Tuple(stoke_subcmd_a)]([
+        MojOpt.register_commands[Tuple(mojopt_subcmd_a)]([
             "subcmd-b",
             "--my-flag",
             "--my-string",
@@ -104,10 +104,10 @@ def test_stoke_invalid_subcmd_no_main():
         ]).run()
 
 
-def test_stoke_invalid_subcmd_with_main():
+def test_mojopt_invalid_subcmd_with_main():
     # With a main, it will fall back to trying to parse the main args
     with assert_raises(contains="Can't parse positional argument"):
-        Stoke.register_commands[(stoke_main, stoke_subcmd_a)]([
+        MojOpt.register_commands[(mojopt_main, mojopt_subcmd_a)]([
             "subcmd-b",
             "--my-flag",
             "--my-string",

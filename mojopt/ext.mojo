@@ -1,4 +1,4 @@
-from stoke.deserialize import Opt
+from mojopt.deserialize import Opt
 
 __extension String:
     @implicit
