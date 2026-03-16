@@ -7,9 +7,11 @@ from std.reflection import (
     get_type_name
 )
 from std.sys import exit
+from std.os import abort
 
 
 from .parser import Parser, ParseOptions
+from .error import MojOptErr, DisplayHelp
 
 from std.builtin.rebind import downcast
 from std.collections import Set
@@ -26,7 +28,7 @@ trait MojOptDeserializable(_Base):
     @staticmethod
     fn from_opts[
         options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises:
+    ](mut p: Parser[options], out s: Self) raises MojOptErr:
         # Validate that there aren't conflicting idents
         comptime _ = __possible_idents[Self]()
 
@@ -58,7 +60,7 @@ trait MojOptDeserializable(_Base):
         return ""
 
 trait MojOptDeserializableAppendable(MojOptDeserializable, Appendable):
-    fn append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises:
+    fn append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises MojOptErr:
         ...
 
 
@@ -125,10 +127,10 @@ struct Opt[
         self = reflection_default[Self]()
     
     @staticmethod
-    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self(_deserialize_impl[Self.T](p))
     
-    fn append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises where conforms_to(Self.T, MojOptDeserializableAppendable):
+    fn append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises MojOptErr where conforms_to(Self.T, MojOptDeserializableAppendable):
         trait_downcast[MojOptDeserializableAppendable](self.value).append_parse(p)
 
     fn append_to(mut self, var value: Some[Copyable & _Base]) where conforms_to(Self.T, Appendable):
@@ -149,7 +151,7 @@ struct Opt[
     
     fn __eq__(self, other: Self) -> Bool where conforms_to(Self.T, Equatable):
         return trait_downcast[Equatable](self.value).__eq__(trait_downcast[Equatable](other.value))
-        
+
 
 @always_inline
 fn try_deserialize[T: _Base](s: List[StaticString]) -> Optional[T]:
@@ -222,6 +224,9 @@ fn __to_ident(s: String) -> String:
     var fixed = s.replace("-", "_")
     return fixed
 
+fn __to_display_name(s: String) -> String:
+    return s.replace("_", "-")
+
 
 fn __at_most_one_args_appendable[T: MojOptDeserializable]() -> Bool:
     comptime field_names = struct_field_names[T]()
@@ -245,7 +250,14 @@ fn __at_most_one_args_appendable[T: MojOptDeserializable]() -> Bool:
 
 
 fn __possible_idents[T: MojOptDeserializable]() -> Dict[String, String]:
-    """ """
+    """Determine the possible idents for all fields in this struct.
+
+    Idents are the following:
+    - The raw name of the field
+    - The name of the field, with `-` replaced with `_`
+    - Any custom name provided by the user via `Opt.long` and `Opt.short` 
+        - For any custom names, the same normalization of `-` to `_` takes place
+    """
     comptime field_names = struct_field_names[T]()
     comptime field_types = struct_field_types[T]()
 
@@ -257,22 +269,21 @@ fn __possible_idents[T: MojOptDeserializable]() -> Dict[String, String]:
             comptime o = downcast[field_types[i], Optable]
             if o.opt_long:
                 assert o.opt_long.value() not in ret, t"Duplicate long opt `{o.opt_long.value()}` in {get_type_name[T]()} on field {name}."
-                ret[o.opt_long.value()] = String(name)
+                ret[__to_ident(o.opt_long.value())] = String(name)
             if o.opt_short:
                 assert o.opt_short.value() not in ret, t"Duplicate short opt `{o.opt_short.value()}` in {get_type_name[T]()} on field {name}."
-                ret[o.opt_short.value()] = String(name)
+                ret[__to_ident(o.opt_short.value())] = String(name)
 
         ret[__to_ident(name)] = String(name)
 
     return ret^
-
 
 @always_inline
 fn _default_deserialize[
     options: ParseOptions,
     //,
     T: _Base,
-](mut p: Parser[options], out s: T) raises:
+](mut p: Parser[options], out s: T) raises MojOptErr:
     comptime if conforms_to(T, Defaultable):
         s = downcast[T, Defaultable]()
     else:
@@ -297,15 +308,14 @@ fn _default_deserialize[
         downcast[T, MojOptDeserializable]
     ]()]()
 
+    comptime help = get_help[downcast[T, MojOptDeserializable]]()
+
     var positionals: List[String] = []
     while not p.is_done():
         var candidate_ident = p.read_string()
         if candidate_ident== "--help" or candidate_ident== "-h":
             # TODO: need a "print_help[T]()" fn that can be called
-            comptime help = get_help[downcast[T, MojOptDeserializable]]()
-            print(help)
-            exit(0)
-            # TODO: exit or raise?
+            raise MojOptErr(DisplayHelp(help))
 
         var ident = possible_idents.get(__to_ident(candidate_ident))
 
@@ -325,7 +335,7 @@ fn _default_deserialize[
 
 
                 comptime if is_optable and downcast[field_type, Optable].opt_is_arg:
-                    raise Error(name, "is a positional argument, not an option.")
+                    raise MojOptErr(Error(t"{ident} is a positional argument, not an option."))
 
                 
                 ref field = __struct_field_ref(i, s)
@@ -337,7 +347,7 @@ fn _default_deserialize[
                     trait_downcast[MojOptDeserializableAppendable](field).append_parse(p)
                 elif _type_is_eq[TField, Bool]() or (is_optable and downcast[field_type, Optable].opt_is_flag):
                     if seen_i:
-                        raise Error("Duplicate key: ", name)
+                        raise MojOptErr(Error(t"Duplicate option: --{ident}"))
                     comptime if is_optable and Bool(downcast[field_type, Optable].opt_default):
                         # Invert whatever the supplied default was
                         comptime value = downcast[field_type, Optable].opt_default.value()
@@ -358,14 +368,18 @@ fn _default_deserialize[
                         field = rebind[TField](True)
                 else:
                     if seen_i:
-                        raise Error("Duplicate key: ", name)
-                    field = _deserialize_impl[TField](p)
+                        raise MojOptErr(Error(t"Duplicate option: --{ident}"))
+                    try:
+                        field = _deserialize_impl[TField](p)
+                    except e:
+                        raise MojOptErr(Error(t"Can't parse --{ident}'s value:\n\t{e}"))
+
 
                 seen_i = True
                 matched = True
 
         if not matched:
-            raise Error("Unexpected field: ", candidate_ident)
+            raise MojOptErr(Error(t"Unexpected field: {candidate_ident}"))
 
     
     # Check for positional arguments
@@ -385,10 +399,10 @@ fn _default_deserialize[
                 try:
                     field = _deserialize_impl[TField](pp)
                 except e:
-                    raise Error(t"Can't parse positional argument {materialize[field_names[i]]()}: {e}")
+                    raise MojOptErr(Error(t"Can't parse positional argument [{materialize[field_names[i]]().upper()}]:\n\t{e}"))
 
         if not pp.is_done():
-            raise Error("Unexpected fields: ", pp.data)
+            raise MojOptErr(Error(t"Unexpected fields: {', '.join(pp.data)}"))
 
 
     comptime for i in range(field_count):
@@ -415,13 +429,17 @@ fn _default_deserialize[
                 field = downcast[type_of(field), Defaultable]()
             else:
                 # Explode
-                comptime name = field_names[i]
-                raise Error("Missing key: ", name)
+
+                comptime name = downcast[field_types[i], Optable].opt_long.value() if is_optable and Bool(downcast[field_types[i], Optable].opt_long) else field_names[i]
+                comptime if is_optable and Bool(downcast[field_types[i], Optable].opt_is_arg):
+                    raise MojOptErr(Error("Missing required argument: [", name.upper(), "]"))
+                else:
+                    raise MojOptErr(Error("Missing required option: --", name))
 
 
 fn _deserialize_impl[
     options: ParseOptions, //, T: _Base
-](mut p: Parser[options], out s: T) raises:
+](mut p: Parser[options], out s: T) raises MojOptErr:
     comptime assert is_struct_type[T](), non_struct_error
 
     comptime if conforms_to(T, MojOptDeserializable):
@@ -446,7 +464,7 @@ fn get_help[T: MojOptDeserializable]() -> String:
         comptime if conforms_to(field_types[i], Optable):
             comptime optlike = downcast[field_types[i], Optable]
             comptime short_name = t"-{optlike.opt_short.value()}, " if optlike.opt_short else ""
-            comptime long_name = t"{optlike.opt_long.value()}" if optlike.opt_long else String(t"{field_name}")
+            comptime long_name = t"{optlike.opt_long.value()}" if optlike.opt_long else String(t"{__to_display_name(field_name)}")
             comptime default = t" [default: {optlike.opt_default.value()}]" if optlike.opt_default else ""
             comptime appendable = "..." if optlike.opt_is_appendable else ""
             comptime fixed_help = optlike.opt_help.replace("\n", "          \n")
@@ -498,7 +516,7 @@ __extension String(MojOptDeserializable):
     @staticmethod
     fn from_opts[
         options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises:
+    ](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = p.read_string()
 
     @staticmethod
@@ -508,7 +526,7 @@ __extension Int(MojOptDeserializable):
 
     fn from_opts[
         options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises:
+    ](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = p.read_int()
 
     @staticmethod
@@ -521,7 +539,7 @@ __extension Bool(MojOptDeserializable):
     @staticmethod
     fn from_opts[
         options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises:
+    ](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = p.read_bool()
 
     @staticmethod
@@ -654,7 +672,7 @@ __extension List(MojOptDeserializableAppendable):
     fn append_to(mut self, var value: Some[Copyable & _Base]):
         self.append(rebind_var[Self.T](value^))
 
-    fn append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises:
+    fn append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises MojOptErr:
         var deser = _deserialize_impl[downcast[Self.T, _Base]](p) # _Base
         var value = trait_downcast_var[Copyable&_Base](deser^) # implicitly Self.T
         self.append_to(value^)
@@ -662,7 +680,7 @@ __extension List(MojOptDeserializableAppendable):
     @staticmethod
     fn from_opts[
         options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises:
+    ](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self()
         
         comptime if options.parsing_mode == ParseOptions.ParsingArguments:
@@ -678,7 +696,7 @@ __extension List(MojOptDeserializableAppendable):
                 var default_parser = Parser[options]([String(v)])
                 s.append(_deserialize_impl[downcast[Self.T, _Base]](default_parser))
         else:
-            raise Error(t"Unknown parse mode: {options.parsing_mode}")
+            abort(t"Unknown parse mode: {options.parsing_mode}")
 
     @staticmethod
     fn description() -> String:

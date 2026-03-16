@@ -1,6 +1,7 @@
 from std.sys import argv
 
 from mojopt.deserialize import MojOptDeserializable, _Base
+from mojopt.error import MojOptErr
 
 
 struct ParseOptions(Equatable, TrivialRegisterPassable):
@@ -32,12 +33,12 @@ struct Parser[options: ParseOptions = ParseOptions()]:
         self.data = args^
     
     @staticmethod
-    def parse[T: MojOptDeserializable & _Base]() raises -> T:
+    def parse[T: MojOptDeserializable & _Base]() raises MojOptErr -> T:
         var parser = Parser()
         return T.from_opts(parser)
 
     @staticmethod
-    def parse[T: MojOptDeserializable & _Base](var args: List[String]) raises -> T:
+    def parse[T: MojOptDeserializable & _Base](var args: List[String]) raises MojOptErr -> T:
         var parser = Parser(args^)
         return T.from_opts(parser)
 

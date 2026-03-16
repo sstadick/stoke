@@ -1,13 +1,12 @@
 
+from mojopt.command import MojOpt, Commandable
+from mojopt.default import reflection_default
 from mojopt.deserialize import MojOptDeserializable, Opt, LoadExts
-from mojopt.parser import Parser, ParseOptions
-from mojopt.subcommand import Commandable
-from mojopt import MojOpt
+from mojopt.parser import Parser
 
-from examples.mod import *
 
 # Needed to force loading Exts
-comptime Ext = LoadExts.FullConformance
+comptime Ext = LoadExts().FullConformance
 
 @fieldwise_init
 struct GetLanguages(MojOptDeserializable, Defaultable, Writable, Commandable):
@@ -15,12 +14,8 @@ struct GetLanguages(MojOptDeserializable, Defaultable, Writable, Commandable):
     var last_name: Opt[String, help="Last name"]
     var languages: Opt[List[String], is_arg=True, help="Languages spoken"]
 
-    # TODO: contribute default implementation to Defaultable that works like Rust Default
-    # We shouldn't have to fill this out by hand.
     fn __init__(out self):
-        self.first_name = {""}
-        self.last_name = {""}
-        self.languages = {[]}
+        self = reflection_default[Self]()
 
     @staticmethod
     fn description() -> String:
@@ -31,14 +26,12 @@ struct GetLanguages(MojOptDeserializable, Defaultable, Writable, Commandable):
 
 @fieldwise_init
 struct GetSports(MojOptDeserializable, Defaultable, Writable, Commandable):
-    var first_name: Opt[String, help="First name"]
+    var first_name: Opt[String, help="First name", long="blarg-name"]
     var last_name: Opt[String, help="Last name"]
     var sports: Opt[List[String], is_arg=True, help="Sports played"]
 
     fn __init__(out self):
-        self.first_name = {""}
-        self.last_name = {""}
-        self.sports = {[]}
+        self = reflection_default[Self]()
     
     @staticmethod
     fn description() -> String:
@@ -48,20 +41,25 @@ struct GetSports(MojOptDeserializable, Defaultable, Writable, Commandable):
         print(self)
     
 @fieldwise_init
-struct Main(MojOptDeserializable, Defaultable, Writable, Commandable):
+struct Example(MojOptDeserializable, Defaultable, Writable, Commandable):
     var example: Opt[String]
     var number: Opt[Int]
 
     fn __init__(out self):
-        self.example = {""}
-        self.number = {0}
+        self = reflection_default[Self]()
 
     @staticmethod
     fn description() -> String:
-        return "Classic Main."
+        return "Just an example."
 
     def run(self) raises:
         print(self)
 
 def main() raises:
-    MojOpt[GetLanguages, GetSports, Main]().run()
+    var toolkit_description = """A contrived example of using multiple subcommands.
+
+    Note that if just one subcommand is given it will be treated as a "main" and can be
+    launched either by running the program with no subcommand specified, or by specifying
+    subcommand name.
+    """
+    MojOpt[GetLanguages, GetSports, Example]().run(toolkit_description=toolkit_description)
