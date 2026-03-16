@@ -1,6 +1,7 @@
 from std.sys import argv
 
-from stoke.deserialize import JsonDeserializable, _Base
+from mojopt.deserialize import MojOptDeserializable, _Base
+from mojopt.error import MojOptErr
 
 
 struct ParseOptions(Equatable, TrivialRegisterPassable):
@@ -22,30 +23,30 @@ struct Parser[options: ParseOptions = ParseOptions()]:
     var cursor: Int
     var data: List[String]
 
-    def __init__(out self):
+    fn __init__(out self):
         self.cursor = 0
         # Skip the first arg as it's the program name.
         self.data = [String(s) for s in argv()[1:]]
 
-    def __init__(out self, var args: List[String]):
+    fn __init__(out self, var args: List[String]):
         self.cursor = 0
         self.data = args^
     
     @staticmethod
-    def parse[T: JsonDeserializable & _Base]() raises -> T:
+    def parse[T: MojOptDeserializable & _Base]() raises MojOptErr -> T:
         var parser = Parser()
-        return T.from_json(parser)
+        return T.from_opts(parser)
 
     @staticmethod
-    def parse[T: JsonDeserializable & _Base](var args: List[String]) raises -> T:
+    def parse[T: MojOptDeserializable & _Base](var args: List[String]) raises MojOptErr -> T:
         var parser = Parser(args^)
-        return T.from_json(parser)
+        return T.from_opts(parser)
 
 
-    def is_done(read self) -> Bool:
+    fn is_done(read self) -> Bool:
         return self.cursor == len(self.data)
 
-    def _get_next(mut self) -> String:
+    fn _get_next(mut self) -> String:
         debug_assert(
             self.cursor < len(self.data),
             "Parser cursor has gone past end of data.",
@@ -54,7 +55,7 @@ struct Parser[options: ParseOptions = ParseOptions()]:
         self.cursor += 1
         return value
 
-    def read_string(mut self) -> String:
+    fn read_string(mut self) -> String:
         # TODO: return ref
         return self._get_next()
 
@@ -70,8 +71,3 @@ struct Parser[options: ParseOptions = ParseOptions()]:
     def read_int(mut self) raises -> Int:
         var value = self._get_next()
         return atol(value)
-
-    @always_inline
-    @classmethod
-    def mark_initialized(s: Self):
-        __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(s))

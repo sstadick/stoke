@@ -1,41 +1,39 @@
-from stoke.deserialize import JsonDeserializable, OptHelp
-from stoke.parser import Parser, ParseOptions
-from stoke import Stoke
+# from mojopt import reflection_default, MojOptDeserializable, Opt, LoadExts
+from mojopt.command import MojOpt, Commandable
+from mojopt.default import reflection_default
+from mojopt.deserialize import MojOptDeserializable, Opt, LoadExts
+from mojopt.parser import Parser
 
+# Needed to force the loading of extensions
+comptime Exts = LoadExts().FullConformance
 
 @fieldwise_init
-struct Args(JsonDeserializable, Defaultable, Writable):
-    comptime blarg: String = "foo"
-    var first_name: String
+struct Args(MojOptDeserializable, Defaultable, Writable, Commandable):
+    var first_name: Opt[String, help="The users first name", long="first-name", short="f"]
     var last_name: String
-    var languages: List[String]
+    # var languages: Opt[List[String], help="The languages the user speaks", is_arg=True]
+    var numbers: Opt[List[Int], help="The languages the user speaks", is_arg=True]
 
-    # TODO: contribute default implementation to Defaultable that works like Rust Default
-    # We shouldn't have to fill this out by hand.
     fn __init__(out self):
-        self.first_name = ""
-        self.last_name = ""
-        self.languages = []
+        self = reflection_default[Self]()
     
-    # TODO: until we can reflect on comptime struct members, or have decorators of some sort / access to doc metadata, this is how we have to define thise
-    # also until associated consts work through extensions.
     @staticmethod
-    fn opt_metadata() -> Dict[String, OptHelp]:
-        return {
-            "first_name": OptHelp(help_msg="First Name"),
-            "last_name": OptHelp(help_msg="Last Name"),
-            "languages": OptHelp(help_msg="Languages spoken", is_arg=True),
-        }
-
-
-def stoke_main(var argv: List[String]):
-    var args = Parser.parse[Args](argv^)
-    print(args)
+    fn description() -> String:
+        return """A small example program.
+        
+        This program demonstrates how to use the Opt type, as well as Commandable.
+        """
+    
+    fn run(self) raises:
+        print(self)
+    
 
 def main() raises:
-    Stoke.register_commands[__functions_in_module()]().run()
+    MojOpt[Args]().run()
 
 # Note, you could aso run this like:
 # def main() raises:
 #     var args = Parser.parse[Args]()
 #     print(args)
+
+# TODO: raise a typed error when --help is hit, or when there are missing keys, etc / handle an print help and exit gracefully

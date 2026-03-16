@@ -1,72 +1,65 @@
 
-from stoke.deserialize import JsonDeserializable, OptHelp
-from stoke.parser import Parser, ParseOptions
-from stoke import Stoke
+from mojopt.command import MojOpt, Commandable
+from mojopt.default import reflection_default
+from mojopt.deserialize import MojOptDeserializable, Opt, LoadExts
+from mojopt.parser import Parser
 
+
+# Needed to force loading Exts
+comptime Ext = LoadExts().FullConformance
 
 @fieldwise_init
-struct GetLanguages(JsonDeserializable, Defaultable, Writable):
-    var first_name: String
-    var last_name: String
-    var languages: List[String]
+struct GetLanguages(MojOptDeserializable, Defaultable, Writable, Commandable):
+    var first_name: Opt[String, help="First name"]
+    var last_name: Opt[String, help="Last name"]
+    var languages: Opt[List[String], is_arg=True, help="Languages spoken"]
 
-    # TODO: contribute default implementation to Defaultable that works like Rust Default
-    # We shouldn't have to fill this out by hand.
     fn __init__(out self):
-        self.first_name = ""
-        self.last_name = ""
-        self.languages = []
+        self = reflection_default[Self]()
+
+    @staticmethod
+    fn description() -> String:
+        return "List the languages spoken."
+
+    def run(self) raises:
+        print(self)
+
+@fieldwise_init
+struct GetSports(MojOptDeserializable, Defaultable, Writable, Commandable):
+    var first_name: Opt[String, help="First name", long="blarg-name"]
+    var last_name: Opt[String, help="Last name"]
+    var sports: Opt[List[String], is_arg=True, help="Sports played"]
+
+    fn __init__(out self):
+        self = reflection_default[Self]()
     
     @staticmethod
-    def opt_metadata() -> Dict[String, OptHelp]:
-        return {
-            "first_name": OptHelp(help_msg="First Name"),
-            "last_name": OptHelp(help_msg="Last Name"),
-            "languages": OptHelp(help_msg="Languages spoken", is_arg=True),
-        }
-
-@fieldwise_init
-struct GetSports(JsonDeserializable, Defaultable, Writable):
-    var first_name: String
-    var last_name: String
-    var sports: List[String]
-
-    # TODO: contribute default implementation to Defaultable that works like Rust Default
-    # We shouldn't have to fill this out by hand.
-    fn __init__(out self):
-        self.first_name = ""
-        self.last_name = ""
-        self.sports= []
+    fn description() -> String:
+        return "List the sports played."
     
+    def run(self) raises:
+        print(self)
+    
+@fieldwise_init
+struct Example(MojOptDeserializable, Defaultable, Writable, Commandable):
+    var example: Opt[String]
+    var number: Opt[Int]
+
+    fn __init__(out self):
+        self = reflection_default[Self]()
+
     @staticmethod
-    fn opt_metadata() -> Dict[String, OptHelp]:
-        return {
-            "first_name": OptHelp(help_msg="First Name"),
-            "last_name": OptHelp(help_msg="Last Name"),
-            "sports": OptHelp(help_msg="Sports played", is_arg=True),
-        }
-    
-@fieldwise_init
-struct Main(JsonDeserializable, Defaultable, Writable):
-    var example: String
-    var number: Int
+    fn description() -> String:
+        return "Just an example."
 
-    fn __init__(out self):
-        self.example = ""
-        self.number = 0
-
-
-def stoke_get_languages(var argv: List[String]):
-    var args = Parser.parse[GetLanguages](argv^)
-    print(args)
-
-def stoke_get_sports(var argv: List[String]):
-    var args = Parser.parse[GetSports](argv^)
-    print(args)
-
-def stoke_main(var argv: List[String]):
-    var args = Parser.parse[Main](argv^)
-    print(args)
+    def run(self) raises:
+        print(self)
 
 def main() raises:
-    Stoke.register_commands[__functions_in_module()]().run()
+    var toolkit_description = """A contrived example of using multiple subcommands.
+
+    Note that if just one subcommand is given it will be treated as a "main" and can be
+    launched either by running the program with no subcommand specified, or by specifying
+    subcommand name.
+    """
+    MojOpt[GetLanguages, GetSports, Example]().run(toolkit_description=toolkit_description)
