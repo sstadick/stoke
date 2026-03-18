@@ -39,10 +39,10 @@ trait MojOptDeserializable(_Base):
         # Check that all defaults are valid
         comptime for i in range(field_count):
             comptime if conforms_to(field_types[i], Optable):
-                comptime if downcast[field_types[i],Optable].opt_default:
+                comptime if downcast[field_types[i],Optable].opt_default_value:
                     comptime assert downcast[field_types[i],Optable].__valid_default(), StaticString(_get_kgen_string[
                         "TOP: Invalid default value ",
-                        downcast[field_types[i], Optable].opt_default.value(),
+                        ' '.join(downcast[field_types[i], Optable].opt_default_value.value()),
                         " for type ",
                         get_type_name[Self]()
                     ]())
@@ -71,7 +71,8 @@ trait Appendable(_Base):
 trait Optable(MojOptDeserializable):
     comptime opt_help: String
     # TODO: needs parametric traits so this doesn't have to be a string
-    comptime opt_default: Optional[String]
+    comptime opt_default_value: Optional[List[String]]
+    comptime opt_defaultable: Bool
     comptime opt_long: Optional[String]
     comptime opt_short: Optional[String]
     comptime opt_is_arg: Bool
@@ -83,11 +84,32 @@ trait Optable(MojOptDeserializable):
     @staticmethod
     fn __valid_default() -> Bool:
         ...
+    
+# TODO: Look into the fact that I can't deserialize arbirtrayr structs from the CLI, so I should be able
+# To constrict thite types on things to all conform to MojOptDesrializable. Then in turn, on the boundaries
+# I think I can move to T: AnyType & _Base and then comptime check conformance to avoid the ext situation.
+# I might already be close to that so don't refactor everything to be T: MojOptDeserializable yet, 
+# But do look at eliminating the code paths for anything that isn't actually MojOptDeser
+
+
+# Progress:
+# - removed MojOptDeserializeable req from a few places
+# - Support for nested structs, partially baked. needs to work out help opts and such
+#    - I think there's a path with maybe using `.` paths? 
+# - Added back support for allowing defaultable Opts, but non-ops still can't use Defaultable 
+#    - Somehow that needs to get baked in with the nested struct situation, so you can specify just one field or something
+# - Need to add tests around defaultable
+# - Need to add a check on __valid_default to make sure the correct number of values are passed in
+# - Need to add a check on __valid_default for nested struct fields that are positional args
+# - Once all that is done, look into moving the MojOptDeserializable fully back into here
+#    - I think it actually works now, I don't have to do the LoadExts thing
 
 struct Opt[
-        T: MojOptDeserializable,
+        # T: MojOptDeserializable,
+        T: AnyType & _Base,
         help: String="",
-        default: Optional[String]=None,
+        default_value: Optional[List[String]]=None,
+        defaultable: Bool = False,
         long: Optional[String]=None,
         short: Optional[String]=None,
         is_arg: Bool=False
@@ -101,7 +123,8 @@ struct Opt[
         Defaultable where conforms_to(T, Defaultable)
     ):
     comptime opt_help = Self.help
-    comptime opt_default = Self.default
+    comptime opt_default_value = Self.default_value
+    comptime opt_defaultable = Self.defaultable
     comptime opt_long = Self.long
     comptime opt_short = Self.short
     comptime opt_is_arg = Self.is_arg
@@ -113,14 +136,22 @@ struct Opt[
     var value: Self.T
 
     fn __init__(out self, var value: Self.T):
+        # comptime assert conforms_to(Self.T, MojOptDeserializable), "MojOptDeserialize must be implemented for Self.T"
         # Comptime validate that the default is parsable
-        comptime if Self.opt_default:
+        comptime if Self.opt_default_value:
             comptime assert Self.__valid_default(), StaticString(_get_kgen_string[
                 "Invalid default value ",
-                Self.opt_default.value(),
+                ", ".join(Self.opt_default_value.value()),
                 " for type ",
                 get_type_name[Self]()
             ]())
+        comptime if Self.opt_defaultable:
+            comptime assert conforms_to(Self.T, Defaultable), StaticString(_get_kgen_string[
+                "defaultable was specified for ",
+                get_type_name[Self](),
+                " but ", get_type_name[Self.T](), " does not implement Defaultable."
+            ]())
+
         self.value = value^
 
     fn __init__(out self) where conforms_to(Self.T, Defaultable):
@@ -138,9 +169,9 @@ struct Opt[
 
     @staticmethod
     fn __valid_default() -> Bool:
-        if Self.opt_default:
+        if materialize[Self.opt_default_value]():
             try:
-                var p = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)]([Self.opt_default.value()])
+                var p = Parser(materialize[Self.opt_default_value]().value().copy())
                 var _ = _deserialize_impl[Self.T](p)
             except e:
                 return False
@@ -228,8 +259,7 @@ fn __strip_prefix_dashes(s: String) -> String:
         return String(s[1:])
     return s
 
-
-
+# TODO: need to recurse down to make sure that nothing on any field type is in turn appendable
 fn __at_most_one_args_appendable[T: MojOptDeserializable]() -> Bool:
     comptime field_names = struct_field_names[T]()
     comptime field_types = struct_field_types[T]()
@@ -251,7 +281,7 @@ fn __at_most_one_args_appendable[T: MojOptDeserializable]() -> Bool:
 
 
 
-fn __possible_idents[T: MojOptDeserializable]() -> Dict[String, String]:
+fn __possible_idents[T: _Base]() -> Dict[String, String]:
     """Determine the possible idents for all fields in this struct.
 
     Idents are the following:
@@ -306,17 +336,14 @@ fn _default_deserialize[
     # maybe an optimization since the InlineArray ctor uses a for loop
     # but according to the IR this will just inline the computed values
     var seen = materialize[InlineArray[Bool, field_count](fill=False)]()
-    var possible_idents = materialize[__possible_idents[
-        downcast[T, MojOptDeserializable]
-    ]()]()
+    var possible_idents = materialize[__possible_idents[T]()]()
 
-    comptime help = get_help[downcast[T, MojOptDeserializable]]()
+    comptime help = get_help[downcast[T, MojOptDeserializable]]() if conforms_to(T, MojOptDeserializable) else ""
 
     var positionals: List[String] = []
     while not p.is_done():
         var candidate_ident = p.read_string()
         if candidate_ident== "--help" or candidate_ident== "-h":
-            # TODO: need a "print_help[T]()" fn that can be called
             raise MojOptErr(DisplayHelp(help))
 
         var ident = possible_idents.get(__to_ident(candidate_ident))
@@ -344,17 +371,18 @@ fn _default_deserialize[
                 comptime TField = downcast[type_of(field), _Base]
                 comptime is_appendable = __is_appendable[TField]() and (not is_optable or downcast[field_type, Optable].opt_is_appendable)
 
+                # MojOptTraits - all okay because we've checked if TField/field is_optable, which in turn means it impls MojOptTraits
                 comptime if is_appendable:
-                    # TODO: add the append_parse method to the trait, default to explode if not a list
                     trait_downcast[MojOptDeserializableAppendable](field).append_parse(p)
                 elif _type_is_eq[TField, Bool]() or (is_optable and downcast[field_type, Optable].opt_is_flag):
                     if seen_i:
                         raise MojOptErr(Error(t"Duplicate option: {candidate_ident}"))
-                    comptime if is_optable and Bool(downcast[field_type, Optable].opt_default):
+                    comptime if is_optable and Bool(downcast[field_type, Optable].opt_default_value):
                         # Invert whatever the supplied default was
-                        comptime value = downcast[field_type, Optable].opt_default.value()
-                        var p_bool = Parser([value])
+                        comptime value = downcast[field_type, Optable].opt_default_value.value()
+                        var p_bool = Parser(materialize[value]().copy())
                         var b = downcast[Bool, MojOptDeserializable].from_opts(p_bool)
+                        # TODO: this should be doable without re-parsing
                         if b:
                             # Was true, invert
                             var p = Parser(["False"])
@@ -362,10 +390,12 @@ fn _default_deserialize[
                         else:
                             var p = Parser(["True"])
                             field = downcast[TField, MojOptDeserializable].from_opts(p)
-                    elif is_optable:
-                            var p = Parser(["True"])
-                            field = downcast[TField, MojOptDeserializable].from_opts(p)
+                    elif is_optable: # Flags are assumed set to default of False
+                        # TODO: technically this ignores the defaultable setting on Opts
+                        var p = Parser(["True"])
+                        field = downcast[TField, MojOptDeserializable].from_opts(p)
                     else:
+                        # TODO: technically this ignores the defaultable setting on Opts
                         # Since the default for bool is False, invert it to true
                         field = rebind[TField](True)
                 else:
@@ -413,19 +443,15 @@ fn _default_deserialize[
             comptime is_optable = conforms_to(field_types[i], Optable)
 
             # Must wrap in bool to avoid incompatible type error
-            comptime if is_optable and Bool(downcast[field_types[i], Optable].opt_default):
+            comptime if is_optable and Bool(downcast[field_types[i], Optable].opt_default_value):
                 # First try to get a default from the metadata
-                comptime default = downcast[field_types[i], Optable].opt_default.value()
+                comptime default = downcast[field_types[i], Optable].opt_default_value.value()
                 ref field = __struct_field_ref(i, s)
-                var p = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)]([default])
+                var p = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)](materialize[default]())
                 field = downcast[
                     type_of(field), MojOptDeserializable
                 ].from_opts(p)
-            elif __is_optional[field_types[i]]():
-                # Turned off the Defaultable fallback
-                # or conforms_to(
-                #     field_types[i], Defaultable
-                # ):
+            elif __is_optional[field_types[i]]() or (is_optable and downcast[field_types[i], Optable].opt_defaultable and conforms_to(field_types[i], Defaultable)):
                 # Then check if defaultable or optional
                 ref field = __struct_field_ref(i, s)
                 field = downcast[type_of(field), Defaultable]()
@@ -459,6 +485,7 @@ fn get_help[T: MojOptDeserializable]() -> String:
     var description = "\n".join([line.lstrip() for line in T.description().splitlines()])
 
     comptime for i in range(0, len(field_names)):
+        # TODO: what if it's a nested struct?
         comptime field_type = field_types[i]
         comptime field_name = field_names[i]
         comptime type_name = get_base_type_name[field_type]()
@@ -467,7 +494,8 @@ fn get_help[T: MojOptDeserializable]() -> String:
             comptime optlike = downcast[field_types[i], Optable]
             comptime short_name = t"-{optlike.opt_short.value()}, " if optlike.opt_short else ""
             comptime long_name = t"{optlike.opt_long.value()}" if optlike.opt_long else String(t"{__to_display_name(field_name)}")
-            comptime default = t" [default: {optlike.opt_default.value()}]" if optlike.opt_default else ""
+            # TODO: better default printing if defaultable and writable
+            comptime default = String(t" [default: {' '.join(optlike.opt_default_value.value())}]") if optlike.opt_default_value else String("defaultable") if optlike.opt_defaultable else String("")
             comptime appendable = "..." if optlike.opt_is_appendable else ""
             comptime fixed_help = optlike.opt_help.replace("\n", "          \n")
             comptime desc_line = t"          {fixed_help}"
@@ -479,6 +507,7 @@ fn get_help[T: MojOptDeserializable]() -> String:
                 comptime details_line = t"  {short_name}--{long_name} <{long_name.upper()}>{appendable}{default}\n"
                 options.append(materialize[String(details_line) + String(desc_line)]())
         else:
+            # TODO: what if it's a struct?
             comptime long_name = t"  --{field_name} <{field_name.upper()}>"
             options.append(materialize[long_name]())
 
@@ -693,10 +722,9 @@ __extension List(MojOptDeserializableAppendable):
             # If we are still option parsing, lists will come as kv pairs still
             s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
         elif options.parsing_mode == ParseOptions.ParsingDefaults:
-            # Parsing a user defined default value, which will be a comma delimited string
-            for v in p.read_string().split(","):
-                var default_parser = Parser[options]([String(v)])
-                s.append(_deserialize_impl[downcast[Self.T, _Base]](default_parser))
+            # Parsing a user defined default value
+            while not p.is_done():
+                s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
         else:
             abort(t"Unknown parse mode: {options.parsing_mode}")
 

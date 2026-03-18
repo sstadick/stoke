@@ -8,7 +8,7 @@ from mojopt.error import MojOptErr
 from mojopt.ext import *
 
 # Needed to force the loading of extensions
-comptime Exts = LoadExts().FullConformance
+# comptime Exts = LoadExts().FullConformance
 
 
 # Tests:
@@ -24,12 +24,12 @@ comptime Exts = LoadExts().FullConformance
 
 @fieldwise_init
 struct Args(MojOptDeserializable, Defaultable):
-    var my_flag: Opt[Bool, help="It's mine", default="False", short="f"]
-    var my_string: Opt[String, help="Also mine", default="FooBar", short="s"]
+    var my_flag: Opt[Bool, help="It's mine", default_value=["False"], short="f"]
+    var my_string: Opt[String, help="Also mine", default_value=["FooBar"], short="s"]
     var my_custom: Opt[CustomType, help="Very custom"]
-    var opt_list: Opt[List[Int], help="Repeatable option", default="10,11,12", short="l"]
-    var arg_one: Opt[Int, help="First positional arg", is_arg=True, default="99"]
-    var remaining_args: Opt[List[Int], help="Remaining args", is_arg=True, default="42,43"]
+    var opt_list: Opt[List[Int], help="Repeatable option", default_value=["10","11","12"], short="l"]
+    var arg_one: Opt[Int, help="First positional arg", is_arg=True, default_value=["99"]]
+    var remaining_args: Opt[List[Int], help="Remaining args", is_arg=True, default_value=["42","43"]]
 
     fn __init__(out self):
         self.my_flag = {False}
@@ -52,11 +52,12 @@ struct CustomType(MojOptDeserializable, Defaultable, Equatable, Writable, Copyab
     @implicit
     fn __init__[
         help: String,
-        default: Optional[String],
+        default_value: Optional[List[String]],
+        defaultable: Bool,
         long: Optional[String],
         short: Optional[String],
         is_arg: Bool
-    ](out self, opt: Opt[Self, help, default, long, short, is_arg]):
+    ](out self, opt: Opt[Self, help, default_value, defaultable, long, short, is_arg]):
         self = opt.value.copy()
 
     @staticmethod
@@ -360,7 +361,7 @@ def test_mojopt_default_args_list() raises:
 @fieldwise_init
 struct ArgsBare(MojOptDeserializable, Defaultable):
     var my_int: Int
-    var complex: Opt[List[String], help="This is a complex one", long="complex", short="c", default="cat,mouse,dog"]
+    var complex: Opt[List[String], help="This is a complex one", long="complex", short="c", default_value=["cat","mouse","dog"]]
 
     fn __init__(out self):
         self.my_int = Int()
@@ -374,10 +375,66 @@ struct ArgsBare(MojOptDeserializable, Defaultable):
         """
     
 def test_bare_args() raises:
-    var parser = Parser(["--my-int", "4", "--complex", "snake", "-c", "snail", "--complex", "cow"])
+    var parser = Parser([s("--my-int"), s("4"), s("--complex"), s("snake"), s("-c"), s("snail"), s("--complex"), s("cow")])
     var args = ArgsBare.from_opts(parser)
     assert_equal(args.my_int, 4)
     assert_equal(args.complex.value, ["snake", "snail", "cow"])
+
+# @fieldwise_init
+# struct argsunsupported(mojoptdeserializable, defaultable):
+#     var my_float: float64
+#     var complex: opt[list[string], help="this is a complex one", long="complex", short="c", default="cat,mouse,dog"]
+
+#     fn __init__(out self):
+#         self.my_float = float64()
+#         self.complex = {[]}
+
+#     @staticmethod
+#     fn description() -> string:
+#         return """just a simple example program.
+
+#         what could possibly go wrong?
+#         """
+    
+# def test_unsupported_args() raises:
+#     var parser = parser(["--my-int", "4", "--complex", "snake", "-c", "snail", "--complex", "cow"])
+#     var args = argsunsupported.from_opts(parser)
+#     assert_equal(args.my_float, 4.0)
+#     assert_equal(args.complex.value, ["snake", "snail", "cow"])
+
+
+@fieldwise_init
+struct ArgsBareType(MojOptDeserializable, Defaultable):
+    var my_num: Int 
+    var complex: Opt[BareComplex, help="This is a complex one", long="complex", short="c", default_value=["--animal", "cat", "--thing", "chair"]]
+    # var complex: BareComplex 
+
+    fn __init__(out self):
+        self.my_num = Int()
+        self.complex = {BareComplex()}
+
+    @staticmethod
+    fn description() -> String:
+        return """Just a simple example program.
+
+        What could possibly go wrong?
+        """
+
+@fieldwise_init
+struct BareComplex(Defaultable, Movable, ImplicitlyDestructible):
+    var animal: String
+    var thing: String
+
+    fn __init__(out self):
+        self.animal = "cat"
+        self.thing = "chair"
+    
+def test_bare_complex() raises:
+    var parser = Parser([s("--my-num"), s("4"), s("--complex"), s("--animal"), s("dragon"), s("--thing"), s("table")])
+    var args = ArgsBareType.from_opts(parser)
+    assert_equal(args.my_num, 4)
+    assert_equal(args.complex.value.animal, "dragon")
+    assert_equal(args.complex.value.thing, "table")
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
