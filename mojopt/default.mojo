@@ -5,9 +5,11 @@ from std.reflection import (
     struct_field_types,
 )
 
+
 @always_inline
 fn reflection_default[T: Defaultable](out this: T):
-    """Get a default instance of type `T` if all members of `T` conform to `Defaultable`."""
+    """Get a default instance of type `T` if all members of `T` conform to `Defaultable`.
+    """
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(this))
     comptime names = struct_field_names[T]()
     comptime types = struct_field_types[T]()
@@ -18,7 +20,7 @@ fn reflection_default[T: Defaultable](out this: T):
             conforms_to(FieldType, Defaultable),
             Parent=T,
             FieldIndex=i,
-            ParentConformsTo="Defaultable"
+            ParentConformsTo="Defaultable",
         ]()
         ref field = __struct_field_ref(i, this)
         field = rebind[type_of(field)](downcast[FieldType, Defaultable]())
