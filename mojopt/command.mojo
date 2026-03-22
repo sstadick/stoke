@@ -5,7 +5,6 @@ from mojopt.deserialize import MojOptDeserializable
 from mojopt.parser import Parser
 from mojopt.error import DisplayHelp, default_handling
 
-# TODO: make this work nicely so when only one command is passed in it can be "main"
 # TODO: Parser should take a slice
 # TODO: convert from PascalCase to kebab-case for subcommands? 
 

@@ -90,24 +90,6 @@ trait Optable(MojOptDeserializable):
     @staticmethod
     fn __valid_default() -> Bool:
         ...
-    
-# TODO: Look into the fact that I can't deserialize arbirtrayr structs from the CLI, so I should be able
-# To constrict thite types on things to all conform to MojOptDesrializable. Then in turn, on the boundaries
-# I think I can move to T: AnyType & _Base and then comptime check conformance to avoid the ext situation.
-# I might already be close to that so don't refactor everything to be T: MojOptDeserializable yet, 
-# But do look at eliminating the code paths for anything that isn't actually MojOptDeser
-
-
-# Progress:
-# - removed MojOptDeserializeable req from a few places
-# - Support for nested structs, partially baked. needs to work out help opts and such
-#    - I think there's a path with maybe using `.` paths? 
-# - Added back support for allowing defaultable Opts, but non-ops still can't use Defaultable 
-#    - Somehow that needs to get baked in with the nested struct situation, so you can specify just one field or something
-# - Added a check for nested struct fields that are positional args
-# - Added tests around defaultable
-# - Once all that is done, look into moving the MojOptDeserializable fully back into here
-#    - I think it actually works now, I don't have to do the LoadExts thing
 
 struct Opt[
         # T: MojOptDeserializable,
@@ -201,6 +183,11 @@ struct Opt[
     fn __eq__(self, other: Self) -> Bool where conforms_to(Self.T, Equatable):
         return trait_downcast[Equatable](self.value).__eq__(trait_downcast[Equatable](other.value))
 
+    fn write_to(self, mut writer: Some[Writer]):
+        comptime if conforms_to(Self.T, Writable):
+            writer.write(trait_downcast[Writable](self.value))
+        else:
+            writer.write("Opt")
 
 @always_inline
 fn try_deserialize[T: _Base](s: List[StaticString]) -> Optional[T]:
@@ -526,7 +513,6 @@ fn get_help[T: _Base, indent_level: Int = 1]() -> String:
         description = ""
 
     comptime for i in range(0, len(field_names)):
-        # TODO: what if it's a nested struct?
         comptime field_type = field_types[i]
         comptime field_name = field_names[i]
         comptime type_name = get_base_type_name[field_type]()
@@ -540,7 +526,12 @@ fn get_help[T: _Base, indent_level: Int = 1]() -> String:
                 comptime short_name = t"-{optlike.opt_short.value()}, " if optlike.opt_short else ""
                 comptime long_name = t"{optlike.opt_long.value()}" if optlike.opt_long else String(t"{__to_display_name(field_name)}")
                 # TODO: better default printing if defaultable and writable
-                comptime default = String(t" [default: {' '.join(optlike.opt_default_value.value())}]") if optlike.opt_default_value else String("defaultable") if optlike.opt_defaultable else String("")
+                # TODO: once again, how so I get at Opt.T? really need parametric traits
+                comptime default = (
+                        String(t" [default: `{' '.join(optlike.opt_default_value.value())}`]") if optlike.opt_default_value else
+                        String(t" [default: `{downcast[field_type, Defaultable & Writable]()}`]") if optlike.opt_defaultable and conforms_to(field_type, Writable) else
+                        String(" [default: `<default_not_writable>`]")
+                        )
                 comptime appendable = "..." if optlike.opt_is_appendable else ""
                 comptime fixed_help = optlike.opt_help.replace("\n", "          \n")
                 comptime desc_line = t"          {fixed_help}"
