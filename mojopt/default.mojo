@@ -22,7 +22,5 @@ fn reflection_default[T: Defaultable & Movable](out this: T):
             FieldIndex=i,
             ParentConformsTo="Defaultable & Movable",
         ]()
-        ref field = trait_downcast[Movable & Defaultable](
-            __struct_field_ref(i, this)
-        )
+        ref field = trait_downcast[Movable & Defaultable](__struct_field_ref(i, this))
         UnsafePointer(to=field).init_pointee_move(type_of(field)())

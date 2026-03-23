@@ -19,9 +19,7 @@ from mojopt.ext import *
 @fieldwise_init
 struct Args(Defaultable, MojOptDeserializable):
     var my_flag: Opt[Bool, help="It's mine", default_value=["False"], short="f"]
-    var my_string: Opt[
-        String, help="Also mine", default_value=["FooBar"], short="s"
-    ]
+    var my_string: Opt[String, help="Also mine", default_value=["FooBar"], short="s"]
     var my_custom: Opt[CustomType, help="Very custom"]
     var opt_list: Opt[
         List[Int],
@@ -29,9 +27,7 @@ struct Args(Defaultable, MojOptDeserializable):
         default_value=["10", "11", "12"],
         short="l",
     ]
-    var arg_one: Opt[
-        Int, help="First positional arg", is_arg=True, default_value=["99"]
-    ]
+    var arg_one: Opt[Int, help="First positional arg", is_arg=True, default_value=["99"]]
     var remaining_args: Opt[
         List[Int],
         help="Remaining args",
@@ -49,9 +45,7 @@ struct Args(Defaultable, MojOptDeserializable):
 
 
 @fieldwise_init
-struct CustomType(
-    Copyable, Defaultable, Equatable, MojOptDeserializable, Writable
-):
+struct CustomType(Copyable, Defaultable, Equatable, MojOptDeserializable, Writable):
     var first_name: String
     var last_name: String
 
@@ -67,16 +61,11 @@ struct CustomType(
         long: Optional[String],
         short: Optional[String],
         is_arg: Bool,
-    ](
-        out self,
-        opt: Opt[Self, help, default_value, defaultable, long, short, is_arg],
-    ):
+    ](out self, opt: Opt[Self, help, default_value, defaultable, long, short, is_arg],):
         self = opt.value.copy()
 
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self()
         s.first_name = p.read_string()
         s.last_name = p.read_string()
@@ -106,9 +95,7 @@ def test_mojopt_basic() raises:
 
 
 def test_mojopt_basic_short_opts() raises:
-    var parser = Parser(
-        [s("-f"), s("-s"), s("blah"), s("--my-custom"), s("John"), s("Doe")]
-    )
+    var parser = Parser([s("-f"), s("-s"), s("blah"), s("--my-custom"), s("John"), s("Doe")])
 
     var args = Args.from_opts(parser)
 
@@ -118,9 +105,7 @@ def test_mojopt_basic_short_opts() raises:
 
 
 def test_mojopt_flag_default() raises:
-    var parser = Parser(
-        [s("--my-string"), s("blah"), s("--my-custom"), s("John"), s("Doe")]
-    )
+    var parser = Parser([s("--my-string"), s("blah"), s("--my-custom"), s("John"), s("Doe")])
 
     var args = Args.from_opts(parser)
 
@@ -527,9 +512,7 @@ def test_bare_complex() raises:
 
 
 @fieldwise_init
-struct DefaultableLarge(
-    Defaultable, ImplicitlyDestructible, MojOptDeserializable
-):
+struct DefaultableLarge(Defaultable, ImplicitlyDestructible, MojOptDeserializable):
     var small: Opt[Int, defaultable=True]
     var medium: Opt[List[String], defaultable=True]
     var large: Opt[Thing, defaultable=True]
@@ -723,9 +706,7 @@ struct SetTest(Defaultable, MojOptDeserializable):
 
 
 def test_set() raises:
-    var parser = Parser(
-        ["--item", "1", "--item", "2", "--item", "3", "--item", "3"]
-    )
+    var parser = Parser(["--item", "1", "--item", "2", "--item", "3", "--item", "3"])
     var args = SetTest.from_opts(parser)
     assert_equal(args.item, {1, 2, 3})
 

@@ -8,14 +8,10 @@ from mojopt.parser import Parser
 
 @fieldwise_init
 struct Args(Commandable, Defaultable, MojOptDeserializable, Writable):
-    var first_name: Opt[
-        String, help="The users first name", long="first-name", short="f"
-    ]
+    var first_name: Opt[String, help="The users first name", long="first-name", short="f"]
     var last_name: String
     var nested: Opt[Nested, help="A nested struct, what could go wrong?"]
-    var languages: Opt[
-        List[String], help="The languages the user speaks", is_arg=True
-    ]
+    var languages: Opt[List[String], help="The languages the user speaks", is_arg=True]
 
     fn __init__(out self):
         self = reflection_default[Self]()

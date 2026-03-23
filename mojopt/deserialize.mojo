@@ -27,9 +27,7 @@ comptime _Base = ImplicitlyDestructible & Movable
 
 trait MojOptDeserializable(_Base):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         # Validate that there aren't conflicting idents
         comptime _ = __possible_idents[Self]()
 
@@ -46,11 +44,7 @@ trait MojOptDeserializable(_Base):
                     ].__valid_default(), StaticString(
                         _get_kgen_string[
                             "TOP: Invalid default value [",
-                            ", ".join(
-                                downcast[
-                                    field_types[i], Optable
-                                ].opt_default_value.value()
-                            ),
+                            ", ".join(downcast[field_types[i], Optable].opt_default_value.value()),
                             "] for type ",
                             get_type_name[Self](),
                             ".",
@@ -78,9 +72,7 @@ trait MojOptDeserializable(_Base):
 
 
 trait MojOptDeserializableAppendable(Appendable, MojOptDeserializable):
-    fn append_parse[
-        options: ParseOptions, //
-    ](mut self, mut p: Parser[options]) raises MojOptErr:
+    fn append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises MojOptErr:
         ...
 
 
@@ -121,9 +113,7 @@ struct Opt[
     Defaultable where conforms_to(T, Defaultable),
     Equatable where conforms_to(T, Equatable),
     MojOptDeserializable,
-    MojOptDeserializableAppendable where conforms_to(
-        T, MojOptDeserializableAppendable
-    ),
+    MojOptDeserializableAppendable where conforms_to(T, MojOptDeserializableAppendable),
     Optable,
     Writable,
 ):
@@ -136,9 +126,7 @@ struct Opt[
     comptime opt_is_flag = _type_is_eq[Self.T, Bool]()
 
     # Needed until MOCO-3413 is resolved (conforms_to does not respect where clause and will return True even for where-gated traits)
-    comptime opt_is_appendable = conforms_to(
-        Self.T, MojOptDeserializableAppendable
-    )
+    comptime opt_is_appendable = conforms_to(Self.T, MojOptDeserializableAppendable)
 
     var value: Self.T
 
@@ -171,9 +159,7 @@ struct Opt[
         self = reflection_default[Self]()
 
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self(_deserialize_impl[Self.T](p))
 
     fn append_parse[
@@ -181,13 +167,9 @@ struct Opt[
     ](mut self, mut p: Parser[options]) raises MojOptErr where conforms_to(
         Self.T, MojOptDeserializableAppendable
     ):
-        trait_downcast[MojOptDeserializableAppendable](self.value).append_parse(
-            p
-        )
+        trait_downcast[MojOptDeserializableAppendable](self.value).append_parse(p)
 
-    fn append_to(
-        mut self, var value: Some[Copyable & _Base]
-    ) where conforms_to(Self.T, Appendable):
+    fn append_to(mut self, var value: Some[Copyable & _Base]) where conforms_to(Self.T, Appendable):
         trait_downcast[Appendable](self.value).append_to(value^)
 
     @staticmethod
@@ -215,9 +197,7 @@ struct Opt[
         return trait_downcast[Boolable](self.value).__bool__()
 
     fn __eq__(self, other: Self) -> Bool where conforms_to(Self.T, Equatable):
-        return trait_downcast[Equatable](self.value).__eq__(
-            trait_downcast[Equatable](other.value)
-        )
+        return trait_downcast[Equatable](self.value).__eq__(trait_downcast[Equatable](other.value))
 
     fn write_to(self, mut writer: Some[Writer]):
         comptime if conforms_to(Self.T, Writable):
@@ -231,9 +211,7 @@ fn try_deserialize[T: _Base](s: List[StaticString]) -> Optional[T]:
     return try_deserialize[T](Parser(s))
 
 
-fn try_deserialize[
-    options: ParseOptions, //, T: _Base
-](var p: Parser[options]) -> Optional[T]:
+fn try_deserialize[options: ParseOptions, //, T: _Base](var p: Parser[options]) -> Optional[T]:
     try:
         return _deserialize_impl[T](p)
     except:
@@ -246,16 +224,12 @@ fn deserialize[T: _Base](s: VariadicList[StaticString], out res: T) raises:
 
 
 @always_inline
-fn deserialize[
-    options: ParseOptions, //, T: _Base
-](mut p: Parser[options], out res: T) raises:
+fn deserialize[options: ParseOptions, //, T: _Base](mut p: Parser[options], out res: T) raises:
     res = _deserialize_impl[T](p)
 
 
 @always_inline
-fn deserialize[
-    options: ParseOptions, //, T: _Base
-](var p: Parser[options], out res: T) raises:
+fn deserialize[options: ParseOptions, //, T: _Base](var p: Parser[options], out res: T) raises:
     res = _deserialize_impl[T](p)
 
 
@@ -322,18 +296,11 @@ fn __count_args_appendable[T: _Base]() -> Int:
         comptime is_optable = conforms_to(field_types[i], Optable)
         # Needed untill MOCO-3413 is resolved (conforms_to does not respect where clause and will return True even for where-gated traits)
         comptime is_appendable = __is_appendable[field_types[i]]() and (
-            not is_optable
-            or downcast[field_types[i], Optable].opt_is_appendable
+            not is_optable or downcast[field_types[i], Optable].opt_is_appendable
         )
-        comptime if (
-            is_optable
-            and downcast[field_types[i], Optable].opt_is_arg
-            and is_appendable
-        ):
+        comptime if (is_optable and downcast[field_types[i], Optable].opt_is_arg and is_appendable):
             count += 1
-        elif not is_optable and is_struct_type[
-            downcast[field_types[i], _Base]
-        ]():
+        elif not is_optable and is_struct_type[downcast[field_types[i], _Base]]():
             count += __count_args_appendable[downcast[field_types[i], _Base]]()
 
     return count
@@ -403,17 +370,14 @@ fn _default_deserialize[
     var seen = materialize[InlineArray[Bool, field_count](fill=False)]()
     var possible_idents = materialize[__possible_idents[T]()]()
 
-    comptime help = get_help[
-        downcast[T, MojOptDeserializable]
-    ]() if conforms_to(T, MojOptDeserializable) else ""
+    comptime help = get_help[downcast[T, MojOptDeserializable]]() if conforms_to(
+        T, MojOptDeserializable
+    ) else ""
 
     var positionals: List[String] = []
     while not p.is_done():
         var candidate_ident = p.read_string()
-        if (
-            candidate_ident.lower() == "--help"
-            or candidate_ident.lower() == "-h"
-        ):
+        if candidate_ident.lower() == "--help" or candidate_ident.lower() == "-h":
             raise MojOptErr(DisplayHelp(help))
 
         var ident = possible_idents.get(__to_ident(candidate_ident))
@@ -432,42 +396,30 @@ fn _default_deserialize[
             if ident.value() == name:
                 ref seen_i = seen.unsafe_get(i)
 
-                comptime if is_optable and downcast[
-                    field_type, Optable
-                ].opt_is_arg:
+                comptime if is_optable and downcast[field_type, Optable].opt_is_arg:
                     raise MojOptErr(
-                        Error(
-                            t"{candidate_ident} is a positional argument, not"
-                            " an option."
-                        )
+                        Error(t"{candidate_ident} is a positional argument, not an option.")
                     )
 
                 ref field = trait_downcast[_Base](__struct_field_ref(i, s))
                 comptime TField = downcast[type_of(field), _Base]
                 comptime is_appendable = __is_appendable[TField]() and (
-                    not is_optable
-                    or downcast[field_type, Optable].opt_is_appendable
+                    not is_optable or downcast[field_type, Optable].opt_is_appendable
                 )
 
                 # MojOptTraits - all okay because we've checked if TField/field is_optable, which in turn means it impls MojOptTraits
                 comptime if is_appendable:
-                    trait_downcast[MojOptDeserializableAppendable](
-                        field
-                    ).append_parse(p)
+                    trait_downcast[MojOptDeserializableAppendable](field).append_parse(p)
                 elif _type_is_eq[TField, Bool]() or (
                     is_optable and downcast[field_type, Optable].opt_is_flag
                 ):
                     if seen_i:
-                        raise MojOptErr(
-                            Error(t"Duplicate option: {candidate_ident}")
-                        )
+                        raise MojOptErr(Error(t"Duplicate option: {candidate_ident}"))
                     comptime if is_optable and Bool(
                         downcast[field_type, Optable].opt_default_value
                     ):
                         # Invert whatever the supplied default was
-                        comptime value = downcast[
-                            field_type, Optable
-                        ].opt_default_value.value()
+                        comptime value = downcast[field_type, Optable].opt_default_value.value()
                         var p_bool = Parser(materialize[value]().copy())
                         var b = p_bool.read_bool()
                         # TODO: this should be doable without re-parsing
@@ -476,21 +428,15 @@ fn _default_deserialize[
                         if b:
                             # Was true, invert
                             var p = Parser(["False"])
-                            field = downcast[
-                                type_of(field), MojOptDeserializable
-                            ].from_opts(p)
+                            field = downcast[type_of(field), MojOptDeserializable].from_opts(p)
                         else:
                             var p = Parser(["True"])
-                            field = downcast[
-                                type_of(field), MojOptDeserializable
-                            ].from_opts(p)
+                            field = downcast[type_of(field), MojOptDeserializable].from_opts(p)
                     elif is_optable:  # Flags are assumed set to default of False
                         # TODO: technically this ignores the defaultable setting on Opts
                         # Needs same fix as above
                         var p = Parser(["True"])
-                        field = downcast[
-                            type_of(field), MojOptDeserializable
-                        ].from_opts(p)
+                        field = downcast[type_of(field), MojOptDeserializable].from_opts(p)
                     else:
                         # TODO: technically this ignores the defaultable setting on Opts
                         # Needs same fix as above
@@ -498,17 +444,11 @@ fn _default_deserialize[
                         field = rebind_var[type_of(field)](True)
                 else:
                     if seen_i:
-                        raise MojOptErr(
-                            Error(t"Duplicate option: {candidate_ident}")
-                        )
+                        raise MojOptErr(Error(t"Duplicate option: {candidate_ident}"))
                     try:
                         field = _deserialize_impl[TField](p)
                     except e:
-                        raise MojOptErr(
-                            Error(
-                                t"Can't parse {candidate_ident}'s value:\n\t{e}"
-                            )
-                        )
+                        raise MojOptErr(Error(t"Can't parse {candidate_ident}'s value:\n\t{e}"))
 
                 seen_i = True
                 matched = True
@@ -518,18 +458,14 @@ fn _default_deserialize[
 
     # Check for positional arguments
     if positionals:
-        var pp = Parser[
-            ParseOptions(parsing_mode=ParseOptions.ParsingArguments)
-        ](positionals^)
+        var pp = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](positionals^)
         comptime for i in range(field_count):
             comptime is_optable = conforms_to(field_types[i], Optable)
 
             if pp.is_done():
                 break
 
-            comptime if is_optable and downcast[
-                field_types[i], Optable
-            ].opt_is_arg:
+            comptime if is_optable and downcast[field_types[i], Optable].opt_is_arg:
                 ref seen_i = seen.unsafe_get(i)
                 seen_i = True
                 ref field = trait_downcast[_Base](__struct_field_ref(i, s))
@@ -540,7 +476,7 @@ fn _default_deserialize[
                     raise MojOptErr(
                         Error(
                             "Can't parse positional argument"
-                            t" [{materialize[field_names[i]]().upper()}]:\n\t{e}"
+                            + String(t" [{materialize[field_names[i]]().upper()}]:\n\t{e}")
                         )
                     )
 
@@ -553,20 +489,14 @@ fn _default_deserialize[
             comptime is_optable = conforms_to(field_types[i], Optable)
 
             # Must wrap in bool to avoid incompatible type error
-            comptime if is_optable and Bool(
-                downcast[field_types[i], Optable].opt_default_value
-            ):
+            comptime if is_optable and Bool(downcast[field_types[i], Optable].opt_default_value):
                 # First try to get a default from the metadata
-                comptime default = downcast[
-                    field_types[i], Optable
-                ].opt_default_value.value()
+                comptime default = downcast[field_types[i], Optable].opt_default_value.value()
                 ref field = trait_downcast[_Base](__struct_field_ref(i, s))
-                var p = Parser[
-                    ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)
-                ](materialize[default]())
-                field = downcast[
-                    type_of(field), MojOptDeserializable
-                ].from_opts(p)
+                var p = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)](
+                    materialize[default]()
+                )
+                field = downcast[type_of(field), MojOptDeserializable].from_opts(p)
             elif __is_optional[field_types[i]]() or (
                 is_optable
                 and downcast[field_types[i], Optable].opt_defaultable
@@ -574,9 +504,7 @@ fn _default_deserialize[
             ):
                 # Then check if defaultable or optional
 
-                ref field = trait_downcast[Movable & Defaultable](
-                    __struct_field_ref(i, s)
-                )
+                ref field = trait_downcast[Movable & Defaultable](__struct_field_ref(i, s))
                 UnsafePointer(to=field).init_pointee_move(type_of(field)())
 
             else:
@@ -589,12 +517,8 @@ fn _default_deserialize[
                 ) else field_names[
                     i
                 ]
-                comptime if is_optable and Bool(
-                    downcast[field_types[i], Optable].opt_is_arg
-                ):
-                    raise MojOptErr(
-                        Error("Missing required argument: [", name.upper(), "]")
-                    )
+                comptime if is_optable and Bool(downcast[field_types[i], Optable].opt_is_arg):
+                    raise MojOptErr(Error("Missing required argument: [", name.upper(), "]"))
                 else:
                     raise MojOptErr(Error("Missing required option: --", name))
 
@@ -618,9 +542,7 @@ fn _comptime_deserialize_impl[
         if p.is_done():
             return DefaultDeserCheck(True, None)
         else:
-            return DefaultDeserCheck(
-                False, "Not all values in parser consumed."
-            )
+            return DefaultDeserCheck(False, "Not all values in parser consumed.")
     except e:
         return DefaultDeserCheck(False, String(e))
 
@@ -640,12 +562,7 @@ fn get_help[T: _Base, indent_level: Int = 1]() -> String:
     var description: String
     comptime if conforms_to(T, MojOptDeserializable) and not __is_opt[T]():
         description = "\n".join(
-            [
-                line.lstrip()
-                for line in downcast[T, MojOptDeserializable]
-                .description()
-                .splitlines()
-            ]
+            [line.lstrip() for line in downcast[T, MojOptDeserializable].description().splitlines()]
         )
     else:
         description = ""
@@ -666,60 +583,46 @@ fn get_help[T: _Base, indent_level: Int = 1]() -> String:
                 ) if optlike.opt_short else ""
                 comptime long_name = String(
                     t"{optlike.opt_long.value()}"
-                ) if optlike.opt_long else String(
-                    t"{__to_display_name(field_name)}"
-                )
+                ) if optlike.opt_long else String(t"{__to_display_name(field_name)}")
                 # TODO: with parametric traits this would be a lot better
                 # Relying on Opt implementing Writable to transparently show Opt.T
                 comptime default = (
                     String(
-                        " [default:"
-                        t" `{' '.join(optlike.opt_default_value.value())}`]"
+                        t" [default: `{' '.join(optlike.opt_default_value.value())}`]"
                     ) if optlike.opt_default_value else String(
-                        " [default:"
-                        t" `{downcast[field_type, Defaultable & Writable]()}`]"
+                        t" [default: `{downcast[field_type, Defaultable & Writable]()}`]"
                     ) if optlike.opt_defaultable
                     and conforms_to(field_type, Writable) else String(
                         " [default: `<default_not_writable>`]"
                     )
                 )
                 comptime appendable = "..." if optlike.opt_is_appendable else ""
-                comptime fixed_help = optlike.opt_help.replace(
-                    "\n", "          \n"
-                )
+                comptime fixed_help = optlike.opt_help.replace("\n", "          \n")
                 comptime desc_line = t"          {fixed_help}"
 
                 comptime if optlike.opt_is_arg:
                     comptime details_line = String(
                         t"  [{long_name.upper()}]{appendable}{default}\n"
                     )
-                    arguments.append(
-                        materialize[String(details_line) + String(desc_line)]()
-                    )
+                    arguments.append(materialize[String(details_line) + String(desc_line)]())
                 else:
                     comptime details_line = String(
                         t"  {short_name}--{long_name} <{long_name.upper()}>{appendable}{default}\n"
                     )
-                    options.append(
-                        materialize[String(details_line) + String(desc_line)]()
-                    )
+                    options.append(materialize[String(details_line) + String(desc_line)]())
             else:
-                comptime long_name = String(
-                    t"  --{field_name} <{field_name.upper()}>"
-                )
+                comptime long_name = String(t"  --{field_name} <{field_name.upper()}>")
                 options.append(materialize[long_name]())
 
-        comptime if conforms_to(
+        comptime if conforms_to(field_type, MojOptDeserializable) and not downcast[
             field_type, MojOptDeserializable
-        ) and not downcast[field_type, MojOptDeserializable]._derive_help():
+        ]._derive_help():
             continue
 
         comptime derived_indent = 0 if __is_opt[T]() else indent_level + 1
         var more_help = [
             String(t"{'     ' * derived_indent}{line}")
-            for line in get_help[
-                downcast[field_type, _Base], derived_indent + 1
-            ]().splitlines()
+            for line in get_help[downcast[field_type, _Base], derived_indent + 1]().splitlines()
             if line
         ]
         for line in more_help:
@@ -747,9 +650,7 @@ fn get_help[T: _Base, indent_level: Int = 1]() -> String:
 
 __extension String(MojOptDeserializable):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = p.read_string()
 
     @staticmethod
@@ -762,9 +663,7 @@ __extension String(MojOptDeserializable):
 
 
 __extension Int(MojOptDeserializable):
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Int(p.read_int())
 
     @staticmethod
@@ -777,12 +676,8 @@ __extension Int(MojOptDeserializable):
 
 
 __extension SIMD(MojOptDeserializable):
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
-        comptime assert (
-            Self.size == 1
-        ), "Currenlty only Scalars are supported by MojOpt"
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
+        comptime assert Self.size == 1, "Currenlty only Scalars are supported by MojOpt"
         s = Self()
         comptime if Self.dtype.is_numeric():
             comptime if Self.dtype.is_floating_point():
@@ -805,9 +700,7 @@ __extension SIMD(MojOptDeserializable):
 
 __extension Bool(MojOptDeserializable):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = p.read_bool()
 
     @staticmethod
@@ -821,9 +714,7 @@ __extension Bool(MojOptDeserializable):
 
 __extension IntLiteral(MojOptDeserializable):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self()
         var i = p.read_int()
         if i != s:
@@ -840,9 +731,7 @@ __extension IntLiteral(MojOptDeserializable):
 
 __extension FloatLiteral(MojOptDeserializable):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self()
         var i = p.read_float()
         if i != s:
@@ -864,9 +753,7 @@ __extension FloatLiteral(MojOptDeserializable):
 
 __extension ArcPointer(MojOptDeserializable):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self(_deserialize_impl[downcast[Self.T, _Base]](p))
 
     @staticmethod
@@ -880,12 +767,8 @@ __extension ArcPointer(MojOptDeserializable):
 
 __extension OwnedPointer(MojOptDeserializable):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
-        s = rebind_var[Self](
-            OwnedPointer(_deserialize_impl[downcast[Self.T, _Base]](p))
-        )
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
+        s = rebind_var[Self](OwnedPointer(_deserialize_impl[downcast[Self.T, _Base]](p)))
 
     @staticmethod
     fn description() -> String:
@@ -903,9 +786,7 @@ __extension OwnedPointer(MojOptDeserializable):
 
 __extension Optional(MojOptDeserializable):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self(_deserialize_impl[downcast[Self.T, _Base]](p))
 
     @staticmethod
@@ -921,19 +802,13 @@ __extension List(MojOptDeserializableAppendable):
     fn append_to(mut self, var value: Some[Copyable & _Base]):
         self.append(rebind_var[Self.T](value^))
 
-    fn append_parse[
-        options: ParseOptions, //
-    ](mut self, mut p: Parser[options]) raises MojOptErr:
+    fn append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises MojOptErr:
         var deser = _deserialize_impl[downcast[Self.T, _Base]](p)  # _Base
-        var value = trait_downcast_var[Copyable & _Base](
-            deser^
-        )  # implicitly Self.T
+        var value = trait_downcast_var[Copyable & _Base](deser^)  # implicitly Self.T
         self.append_to(value^)
 
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self()
 
         comptime if options.parsing_mode == ParseOptions.ParsingArguments:
@@ -963,19 +838,13 @@ __extension Set(MojOptDeserializableAppendable):
     fn append_to(mut self, var value: Some[Copyable & _Base]):
         self.add(rebind_var[Self.T](value^))
 
-    fn append_parse[
-        options: ParseOptions, //
-    ](mut self, mut p: Parser[options]) raises MojOptErr:
+    fn append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises MojOptErr:
         var deser = _deserialize_impl[downcast[Self.T, _Base]](p)  # _Base
-        var value = trait_downcast_var[Copyable & _Base](
-            deser^
-        )  # implicitly Self.T
+        var value = trait_downcast_var[Copyable & _Base](deser^)  # implicitly Self.T
         self.append_to(value^)
 
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self()
 
         comptime if options.parsing_mode == ParseOptions.ParsingArguments:
@@ -1003,9 +872,7 @@ __extension Set(MojOptDeserializableAppendable):
 
 __extension InlineArray(MojOptDeserializable):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self(uninitialized=True)
         comptime assert (
             options.parsing_mode != ParseOptions.ParsingOptions
@@ -1038,9 +905,7 @@ __extension InlineArray(MojOptDeserializable):
 
 __extension Tuple(MojOptDeserializable):
     @staticmethod
-    fn from_opts[
-        options: ParseOptions, //
-    ](mut p: Parser[options], out s: Self) raises MojOptErr:
+    fn from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(s))
         comptime assert (
             options.parsing_mode != ParseOptions.ParsingOptions

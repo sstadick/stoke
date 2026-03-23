@@ -34,17 +34,13 @@ struct MojOpt[*CommandTypes: Commandable](Movable):
         comptime if Variadic.size(Self.CommandTypes) == 1:
             if len(self.argv) > 0 and Self.CommandTypes[0].name == self.argv[0]:
                 try:
-                    var args = Parser.parse[Self.CommandTypes[0]](
-                        List(self.argv[1:])
-                    )
+                    var args = Parser.parse[Self.CommandTypes[0]](List(self.argv[1:]))
                     args.run()
                 except e:
                     default_handling(e)
             else:
                 try:
-                    var args = Parser.parse[Self.CommandTypes[0]](
-                        List(self.argv)
-                    )
+                    var args = Parser.parse[Self.CommandTypes[0]](List(self.argv))
                     args.run()
                 except e:
                     default_handling(e)
@@ -54,26 +50,15 @@ struct MojOpt[*CommandTypes: Commandable](Movable):
         comptime for i in range(Variadic.size(Self.CommandTypes)):
             if len(self.argv) > 0 and Self.CommandTypes[i].name == self.argv[0]:
                 try:
-                    var args = Parser.parse[Self.CommandTypes[i]](
-                        List(self.argv[1:])
-                    )
+                    var args = Parser.parse[Self.CommandTypes[i]](List(self.argv[1:]))
                     args.run()
                     break
                 except e:
                     default_handling(e)
         else:
-            if len(self.argv) > 0 and (
-                self.argv[0] == "--help" or self.argv[0] == "-h"
-            ):
+            if len(self.argv) > 0 and (self.argv[0] == "--help" or self.argv[0] == "-h"):
                 if len(toolkit_description) > 0:
-                    print(
-                        "\n".join(
-                            [
-                                line.lstrip()
-                                for line in toolkit_description.splitlines()
-                            ]
-                        )
-                    )
+                    print("\n".join([line.lstrip() for line in toolkit_description.splitlines()]))
                 print("\nCommands:")
                 comptime for i in range(Variadic.size(Self.CommandTypes)):
                     print(t"  {Self.CommandTypes[i].name}:")
@@ -81,9 +66,7 @@ struct MojOpt[*CommandTypes: Commandable](Movable):
                         "\n".join(
                             [
                                 String(t"          {line.lstrip()}")
-                                for line in Self.CommandTypes[i]
-                                .description()
-                                .splitlines()
+                                for line in Self.CommandTypes[i].description().splitlines()
                             ]
                         )
                     )

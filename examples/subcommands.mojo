@@ -60,6 +60,4 @@ def main() raises:
     Note that if just one subcommand is given it will be treated as a "main" and can be
     launched either by running the program with no subcommand specified, or by specifying
     subcommand name."""
-    MojOpt[GetLanguages, GetSports, Example]().run(
-        toolkit_description=toolkit_description
-    )
+    MojOpt[GetLanguages, GetSports, Example]().run(toolkit_description=toolkit_description)

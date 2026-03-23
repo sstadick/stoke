@@ -37,9 +37,7 @@ struct Parser[options: ParseOptions = ParseOptions()]:
         return T.from_opts(parser)
 
     @staticmethod
-    def parse[
-        T: MojOptDeserializable & _Base
-    ](var args: List[String]) raises MojOptErr -> T:
+    def parse[T: MojOptDeserializable & _Base](var args: List[String]) raises MojOptErr -> T:
         var parser = Parser(args^)
         return T.from_opts(parser)
 
@@ -73,9 +71,7 @@ struct Parser[options: ParseOptions = ParseOptions()]:
         var value = self._get_next()
         return Scalar[type](atol(value))
 
-    def read_float[
-        type: DType = DType.float64
-    ](mut self) raises -> Scalar[type]:
+    def read_float[type: DType = DType.float64](mut self) raises -> Scalar[type]:
         comptime assert type.is_floating_point(), "Floats are floating point"
         var value = self._get_next()
         return Scalar[type](atof(value))
