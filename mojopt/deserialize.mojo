@@ -204,23 +204,6 @@ struct Opt[
 
 
 @always_inline
-fn try_deserialize[T: _Base](s: List[StaticString]) -> Optional[T]:
-    return try_deserialize[T](Parser(s))
-
-
-fn try_deserialize[options: ParseOptions, //, T: _Base](var p: Parser[options]) -> Optional[T]:
-    try:
-        return _deserialize_impl[T](p)
-    except:
-        return None
-
-
-@always_inline
-fn deserialize[T: _Base](s: VariadicList[StaticString], out res: T) raises:
-    res = deserialize[T](Parser(s))
-
-
-@always_inline
 fn deserialize[options: ParseOptions, //, T: _Base](mut p: Parser[options], out res: T) raises:
     res = _deserialize_impl[T](p)
 
