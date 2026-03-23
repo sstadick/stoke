@@ -26,6 +26,8 @@ pixi add --git "https://github.com/sstadick/mojopt.git" mojopt && pixi install
 
 ## Example
 
+An example project is set up [here](https://github.com/sstadick/mojopt-demo).
+
 ### Getting Started
 
 ```mojo
