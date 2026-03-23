@@ -56,6 +56,16 @@ def main() raises:
     MojOpt[Example]().run()
 ```
 
+```bash
+> simple --help
+Just an example program.
+Options:
+  -e), --example <EXAMPLE> [default: `foobar`]
+          Just an example string
+  -n), --num <NUM> [default: `0`]
+          Just a number
+```
+
 ### Getting Started
 
 ```mojo
@@ -125,6 +135,22 @@ def main() raises:
     MojOpt[Args]().run()
 ```
 
+```bash
+> getting_started --help
+A small example program.
+
+This program demonstrates how to use the Opt type, as well as Commandable.
+
+Arguments:
+  [LANGUAGES]... [default: `<default_not_writable>`]
+          The languages the user speaks
+Options:
+  -f), --first-name <FIRST-NAME> [default: `<default_not_writable>`]
+          The users first name
+  --last_name <LAST_NAME>
+  -s), --special <SPECIAL> [default: `42`]
+          Super special numbers
+```
 
 ### Subcommands
 
@@ -191,6 +217,33 @@ def main() raises:
     launched either by running the program with no subcommand specified, or by specifying
     subcommand name."""
     MojOpt[GetLanguages, GetSports, Example]().run(toolkit_description=toolkit_description)
+```
+
+```bash
+> subcommands --help
+A contrived example of using multiple subcommands.
+
+Note that if just one subcommand is given it will be treated as a "main" and can be
+launched either by running the program with no subcommand specified, or by specifying
+subcommand name.
+
+Commands:
+  GetLanguages:
+          List the languages spoken.
+  GetSports:
+          List the sports played.
+  Example:
+          Options and args done't have to be Opts!
+> subcommands GetSports --help
+List the sports played.
+Arguments:
+  [SPORTS]... [default: `<default_not_writable>`]
+          Sports played
+Options:
+  -f), --firstname <FIRSTNAME> [default: `<default_not_writable>`]
+          First name
+  -l), --lastname <LASTNAME> [default: `<default_not_writable>`]
+          Last name
 ```
 
 For more examples see the [examples](./examples).
