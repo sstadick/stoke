@@ -9,6 +9,21 @@ A Mojo library for parsing CLI args based on the Rust Structopt crate.
 
 `MojOpt` is a fully featured CLI option parser that uses struct definitions to parse the CLI options.
 
+## Install
+
+From Modular Community:
+
+```bash
+# Not yet published
+# pixi add mojopt && pixi install
+```
+
+From source:
+
+```bash
+pixi add --git "https://github.com/sstadick/mojopt.git" mojopt && pixi install
+```
+
 ## Example
 
 ### Getting Started
