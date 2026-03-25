@@ -16,6 +16,7 @@ from std.sys.intrinsics import _type_is_eq
 from mojopt.parser import Parser, ParseOptions
 from mojopt.error import MojOptErr, DisplayHelp
 from mojopt.default import reflection_default
+from mojopt.help import get_help
 
 
 comptime non_struct_error = "Cannot deserialize non-struct type"
@@ -531,97 +532,6 @@ fn _comptime_deserialize_impl[
 struct DefaultDeserCheck(Movable, Writable):
     var ok: Bool
     var error: Optional[String]
-
-
-fn get_help[T: _Base, indent_level: Int = 1]() -> String:
-    comptime field_names = struct_field_names[T]()
-    comptime field_types = struct_field_types[T]()
-
-    var options: List[String] = []
-    var arguments: List[String] = []
-    var description: String
-    comptime if conforms_to(T, MojOptDeserializable) and not __is_opt[T]():
-        description = "\n".join(
-            [line.lstrip() for line in downcast[T, MojOptDeserializable].description().splitlines()]
-        )
-    else:
-        description = ""
-
-    comptime for i in range(0, len(field_names)):
-        comptime field_type = field_types[i]
-        comptime field_name = field_names[i]
-        comptime type_name = get_base_type_name[field_type]()
-
-        comptime if not is_struct_type[field_type]():
-            continue
-
-        comptime if not __is_opt[T]():
-            comptime if conforms_to(field_type, Optable):
-                comptime optlike = downcast[field_types[i], Optable]
-                comptime short_name = String(
-                    t"-{optlike.opt_short.value()}), "
-                ) if optlike.opt_short else ""
-                comptime long_name = String(
-                    t"{optlike.opt_long.value()}"
-                ) if optlike.opt_long else String(t"{__to_display_name(field_name)}")
-                # TODO: with parametric traits this would be a lot better
-                # Relying on Opt implementing Writable to transparently show Opt.T
-                comptime default = (
-                    String(
-                        t" [default: `{' '.join(optlike.opt_default_value.value())}`]"
-                    ) if optlike.opt_default_value else String(
-                        t" [default: `{downcast[field_type, Defaultable & Writable]()}`]"
-                    ) if optlike.opt_defaultable
-                    and conforms_to(
-                        field_type, Writable
-                    ) else " [default: `<default_not_writable>`]" if optlike.opt_defaultable
-                    and not conforms_to(field_type, Writable) else ""
-                )
-                comptime appendable = "..." if optlike.opt_is_appendable else ""
-                comptime fixed_help = optlike.opt_help.replace("\n", "          \n")
-                comptime desc_line = t"          {fixed_help}"
-
-                comptime if optlike.opt_is_arg:
-                    comptime details_line = String(
-                        t"  [{long_name.upper()}]{appendable}{default}\n"
-                    )
-                    arguments.append(materialize[String(details_line) + String(desc_line)]())
-                else:
-                    comptime details_line = String(
-                        t"  {short_name}--{long_name} <{long_name.upper()}>{appendable}{default}\n"
-                    )
-                    options.append(materialize[String(details_line) + String(desc_line)]())
-            else:
-                comptime long_name = String(t"  --{field_name} <{field_name.upper()}>")
-                options.append(materialize[long_name]())
-
-        comptime if conforms_to(field_type, MojOptDeserializable) and not downcast[
-            field_type, MojOptDeserializable
-        ]._derive_help():
-            continue
-
-        comptime derived_indent = 0 if __is_opt[T]() else indent_level + 1
-        var more_help = [
-            String(t"{'     ' * derived_indent}{line}")
-            for line in get_help[downcast[field_type, _Base], derived_indent + 1]().splitlines()
-            if line
-        ]
-        for line in more_help:
-            options.append(line)
-
-    var final_list = [description]
-    if len(arguments) > 0:
-        if not __is_opt[T]():
-            final_list.append("Arguments:")
-        final_list.append("\n".join(arguments))
-
-    if len(options) > 0:
-        if not __is_opt[T]():
-            final_list.append("Options:")
-        final_list.append("\n".join(options))
-
-    var final = "\n".join(final_list)
-    return final
 
 
 # ===============================================
