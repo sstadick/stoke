@@ -62,7 +62,8 @@ Options:
     Just an example string
 
   -n, --num NUM [default: `0`]
-    Just a number```
+    Just a number
+```
 
 ## Getting Started
 
@@ -143,7 +144,8 @@ Options:
   --last-name LAST_NAME [Required]
 
   -s, --special SPECIAL [default: `42`]
-    Super special number.```
+    Super special number.
+```
 
 ## Subcommands
 
@@ -225,7 +227,8 @@ Commands:
   GetSports:
           List the sports played.
   Example:
-          Options and args done't have to be Opts!```
+          Options and args done't have to be Opts!
+```
 
 
 For more examples see the [examples](./examples).
