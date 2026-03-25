@@ -33,7 +33,12 @@ mojo-compiler = "0.*"
 r = "mojo run main.mojo"
 t = { cmd = "sh -c 'find ./tests -name test_*.mojo | xargs -I % mojo run -I . -D ASSERT=all %'" }
 examples = { cmd = "sh -c 'find ./examples -name *.mojo | xargs -I % mojo run -I . -D ASSERT=all % --help'" }
-lint = { cmd = "mojo format --line-length 100 mojopt/* tests/* examples/*" }
+lint = { cmd = "mojo format --line-length 100 mojopt/* tests/* examples/* scripts/*" }
+gen_examples = """
+mojo run -I . scripts/generate_readme_examples.mojo --program ./examples/simple.mojo --section-header '## Simple' &&
+mojo run -I . scripts/generate_readme_examples.mojo --program ./examples/getting_started.mojo --section-header '## Getting Started' && 
+mojo run -I . scripts/generate_readme_examples.mojo --program ./examples/subcommands.mojo --section-header '## Subcommands'
+"""
 
 [dependencies]
 mojo = "==0.26.2"

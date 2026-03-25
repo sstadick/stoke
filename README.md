@@ -55,18 +55,16 @@ struct Example(Commandable, Defaultable, Movable, Writable):
 def main() raises:
     MojOpt[Example]().run()
 ```
-
 ```bash
-> simple --help
 Just an example program.
 Options:
-  -e), --example <EXAMPLE> [default: `foobar`]
-          Just an example string
-  -n), --num <NUM> [default: `0`]
-          Just a number
-```
+  -e, --example EXAMPLE [default: `foobar`]
+    Just an example string
 
-### Getting Started
+  -n, --num NUM [default: `0`]
+    Just a number```
+
+## Getting Started
 
 ```mojo
 from mojopt.command import Commandable, MojOpt
@@ -129,27 +127,25 @@ def main() raises:
     # If there is only one command, that is treated as main, but will also still work as a subcomand.
     # i.e. `./getting_started args --help` and `./getting_started --help` both work here
     MojOpt[Args]().run()
-
 ```
-
 ```bash
-> getting_started --help
 A small example program.
 
 This program demonstrates how to use the Opt type, as well as Commandable.
 
 Arguments:
-  [LANGUAGES]...
-          The languages the user speaks
+  [LANGUAGES]... [Required]
+    The languages the user speaks
 Options:
-  -f), --first-name <FIRST-NAME>
-          The users first name
-  --last_name <LAST_NAME>
-  -s), --special <SPECIAL> [default: `42`]
-          Super special number.
-```
+  -f, --first-name FIRST-NAME [Required]
+    The users first name
 
-### Subcommands
+  --last-name LAST_NAME [Required]
+
+  -s, --special SPECIAL [default: `42`]
+    Super special number.```
+
+## Subcommands
 
 ```mojo
 from mojopt.command import MojOpt, Commandable
@@ -215,11 +211,8 @@ def main() raises:
     launched either by running the program with no subcommand specified, or by specifying
     subcommand name."""
     MojOpt[GetLanguages, GetSports, Example]().run(toolkit_description=toolkit_description)
-
 ```
-
 ```bash
-> subcommands --help
 A contrived example of using multiple subcommands.
 
 Note that if just one subcommand is given it will be treated as a "main" and can be
@@ -232,18 +225,8 @@ Commands:
   GetSports:
           List the sports played.
   Example:
-          Options and args done't have to be Opts
-> subcommands GetSports --help
-List the sports played.
-Arguments:
-  [SPORTS]...
-          Sports played
-Options:
-  -f), --firstname <FIRSTNAME>
-          First name
-  -l), --lastname <LASTNAME>
-          Last name
-```
+          Options and args done't have to be Opts!```
+
 
 For more examples see the [examples](./examples).
 

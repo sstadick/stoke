@@ -9,6 +9,13 @@ from mojopt.error import DisplayHelp, default_handling
 # TODO: convert from PascalCase to kebab-case for subcommands?
 
 
+trait Commandable(MojOptDeserializable):
+    comptime name: String = get_base_type_name[Self]()
+
+    def run(self) raises:
+        ...
+
+
 struct MojOpt[*CommandTypes: Commandable](Movable):
     var argv: List[String]
 
@@ -26,9 +33,6 @@ struct MojOpt[*CommandTypes: Commandable](Movable):
         self.argv = argv^
 
     def run(self, toolkit_description: String = "") raises:
-        # if len(self.argv) == 0:
-        #     raise Error("No arguments passed in")
-
         # Single Command used to build MojOpt, treat is as "main" and allow it to work
         # with our without spelling out the subcommand.
         comptime if Variadic.size(Self.CommandTypes) == 1:
@@ -81,10 +85,3 @@ struct MojOpt[*CommandTypes: Commandable](Movable):
                 print()
                 print("\nFor more information, try '--help'.")
                 exit(2)
-
-
-trait Commandable(MojOptDeserializable):
-    comptime name: String = get_base_type_name[Self]()
-
-    def run(self) raises:
-        ...
