@@ -21,13 +21,13 @@ backend = { name = "pixi-build-mojo", version = "0.*", channels = [
 ] }
 
 [package.host-dependencies]
-mojo-compiler = "0.*"
+mojo-compiler = "==0.26.2"
 
 [package.build-dependencies]
-mojo-compiler = "0.*"
+mojo-compiler = "==0.26.2"
 
 [package.run-dependencies]
-mojo-compiler = "0.*"
+mojo-compiler = "==0.26.2"
 
 [tasks]
 r = "mojo run main.mojo"
