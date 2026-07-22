@@ -694,6 +694,12 @@ def test_list() raises:
     assert_equal(args.item, [1, 2, 3])
 
 
+def test_list_parse_error() raises:
+    var parser = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](["1", "bad"])
+    with assert_raises():
+        var _ = List[Int].from_opts(parser)
+
+
 from std.collections import Set
 
 

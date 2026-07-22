@@ -9,7 +9,7 @@ from mojopt.error import default_handling
 
 
 trait Commandable(MojOptDeserializable):
-    comptime name: String = String(reflect[Self]().base_name())
+    comptime name: String = String(reflect[Self].base_name())
 
     def run(self) raises:
         ...

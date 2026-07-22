@@ -21,7 +21,7 @@ trait MojOptDeserializable(_Base):
         # Validate that there aren't conflicting idents
         comptime _ = __possible_idents[Self]()
 
-        comptime r = reflect[Self]()
+        comptime r = reflect[Self]
         comptime field_count = r.field_count()
         comptime field_names = r.field_names()
         comptime field_types = r.field_types()
@@ -130,16 +130,16 @@ struct Opt[
                     "Invalid default value [",
                     ", ".join(Self.opt_default_value.value()),
                     "] for type ",
-                    reflect[Self]().name(),
+                    reflect[Self].name(),
                 ]()
             )
         comptime if Self.opt_defaultable:
             comptime assert conforms_to(Self.T, Defaultable), StaticString(
                 _get_kgen_string[
                     "defaultable was specified for ",
-                    reflect[Self]().name(),
+                    reflect[Self].name(),
                     " but ",
-                    reflect[Self.T]().name(),
+                    reflect[Self.T].name(),
                     " does not implement Defaultable.",
                 ]()
             )
@@ -211,12 +211,12 @@ def deserialize[options: ParseOptions, //, T: _Base](var p: Parser[options], out
 
 @always_inline
 def __is_optional[T: AnyType]() -> Bool:
-    return reflect[T]().base_name() == "Optional"
+    return reflect[T].base_name() == "Optional"
 
 
 @always_inline
 def __is_list[T: AnyType]() -> Bool:
-    return reflect[T]().base_name() == "List"
+    return reflect[T].base_name() == "List"
 
 
 @always_inline
@@ -226,16 +226,16 @@ def __is_appendable[T: AnyType]() -> Bool:
 
 @always_inline
 def __is_default[T: AnyType]() -> Bool:
-    return reflect[T]().base_name() == "Default"
+    return reflect[T].base_name() == "Default"
 
 
 @always_inline
 def __is_opt[T: AnyType]() -> Bool:
-    return reflect[T]().base_name() == "Opt"
+    return reflect[T].base_name() == "Opt"
 
 
 def __all_dtors_are_trivial[T: AnyType]() -> Bool:
-    comptime r = reflect[T]()
+    comptime r = reflect[T]
     comptime field_types = r.field_types()
     comptime for i in range(r.field_count()):
         comptime type = field_types[i]
@@ -263,13 +263,13 @@ def __strip_prefix_dashes(s: String) -> String:
 
 
 def __count_args_appendable[T: _Base]() -> Int:
-    comptime r = reflect[T]()
+    comptime r = reflect[T]
     comptime field_names = r.field_names()
     comptime field_types = r.field_types()
 
     var count = 0
     comptime for i in range(0, len(field_names)):
-        comptime if not reflect[field_types[i]]().is_struct():
+        comptime if not reflect[field_types[i]].is_struct():
             continue
         comptime is_optable = conforms_to(field_types[i], Optable)
         # Needed untill MOCO-3413 is resolved (conforms_to does not respect where clause and will return True even for where-gated traits)
@@ -278,7 +278,7 @@ def __count_args_appendable[T: _Base]() -> Int:
         )
         comptime if (is_optable and downcast[field_types[i], Optable].opt_is_arg and is_appendable):
             count += 1
-        elif not is_optable and reflect[downcast[field_types[i], _Base]]().is_struct():
+        elif not is_optable and reflect[downcast[field_types[i], _Base]].is_struct():
             count += __count_args_appendable[downcast[field_types[i], _Base]]()
 
     return count
@@ -293,7 +293,7 @@ def __possible_idents[T: _Base]() -> Dict[String, String]:
     - Any custom name provided by the user via `Opt.long` and `Opt.short`
         - For any custom names, the same normalization of `-` to `_` takes place
     """
-    comptime r = reflect[T]()
+    comptime r = reflect[T]
     comptime field_names = r.field_names()
     comptime field_types = r.field_types()
 
@@ -336,7 +336,7 @@ def _default_deserialize[
         )
         __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(s))
 
-    comptime r = reflect[T]()
+    comptime r = reflect[T]
     comptime field_count = r.field_count()
     comptime field_names = r.field_names()
     comptime field_types = r.field_types()
@@ -502,7 +502,7 @@ def _default_deserialize[
 def _deserialize_impl[
     options: ParseOptions, //, T: _Base
 ](mut p: Parser[options], out s: T) raises MojOptErr:
-    comptime assert reflect[T]().is_struct(), non_struct_error
+    comptime assert reflect[T].is_struct(), non_struct_error
 
     comptime if conforms_to(T, MojOptDeserializable):
         s = downcast[T, MojOptDeserializable].from_opts(p)
@@ -697,19 +697,27 @@ __extension List(MojOptDeserializableAppendable):
     def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
         s = Self()
 
-        comptime if options.parsing_mode == ParseOptions.ParsingArguments:
-            # If we are argument parsing, consume all the values possible
-            while not p.is_done():
+        try:
+            comptime if options.parsing_mode == ParseOptions.ParsingArguments:
+                # If we are argument parsing, consume all the values possible
+                while not p.is_done():
+                    s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
+            elif options.parsing_mode == ParseOptions.ParsingOptions:
+                # If we are still option parsing, lists will come as kv pairs still
                 s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
-        elif options.parsing_mode == ParseOptions.ParsingOptions:
-            # If we are still option parsing, lists will come as kv pairs still
-            s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
-        elif options.parsing_mode == ParseOptions.ParsingDefaults:
-            # Parsing a user defined default value
-            while not p.is_done():
-                s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
-        else:
-            abort(t"Unknown parse mode: {options.parsing_mode}")
+            elif options.parsing_mode == ParseOptions.ParsingDefaults:
+                # Parsing a user defined default value
+                while not p.is_done():
+                    s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
+            else:
+                abort(t"Unknown parse mode: {options.parsing_mode}")
+        except e:
+
+            def destroy_element(var element: Self.T):
+                _ = trait_downcast_var[Movable & ImplicitlyDestructible](element^)
+
+            s^.destroy_with(destroy_element)
+            raise e^
 
     @staticmethod
     def description() -> String:

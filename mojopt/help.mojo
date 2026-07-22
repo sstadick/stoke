@@ -4,7 +4,7 @@ from std.builtin.rebind import downcast
 
 
 def get_help[T: _Base, indent_level: Int = 1]() -> String:
-    comptime r = reflect[T]()
+    comptime r = reflect[T]
     comptime field_names = r.field_names()
     comptime field_types = r.field_types()
 
@@ -22,7 +22,7 @@ def get_help[T: _Base, indent_level: Int = 1]() -> String:
         comptime field_type = field_types[i]
         comptime field_name = field_names[i]
 
-        comptime if not reflect[field_type]().is_struct():
+        comptime if not reflect[field_type].is_struct():
             continue
 
         comptime if not __is_opt[T]():

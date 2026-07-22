@@ -1,3 +1,5 @@
+from std.builtin.rebind import downcast
+
 from mojopt.deserialize import Opt
 
 
@@ -43,12 +45,22 @@ __extension Bool:
 __extension List:
     @implicit
     def __init__[
-        T: Copyable,
         help: String,
         default_value: Optional[List[String]],
         defaultable: Bool,
         long: Optional[String],
         short: Optional[String],
         is_arg: Bool,
-    ](out self: List[T], opt: Opt[List[T], help, default_value, defaultable, long, short, is_arg],):
-        self = opt.value.copy()
+    ](
+        out self: List[Self.T],
+        opt: Opt[
+            List[downcast[Self.T, Copyable & ImplicitlyDestructible]],
+            help,
+            default_value,
+            defaultable,
+            long,
+            short,
+            is_arg,
+        ],
+    ):
+        self = rebind_var[Self](opt.value.copy())

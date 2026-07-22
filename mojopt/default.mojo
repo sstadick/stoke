@@ -7,7 +7,7 @@ def reflection_default[T: Defaultable & Movable](out this: T):
     `Defaultable & Movable`.
     """
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(this))
-    comptime r = reflect[T]()
+    comptime r = reflect[T]
     comptime names = r.field_names()
     comptime types = r.field_types()
     comptime for i in range(names.size):
