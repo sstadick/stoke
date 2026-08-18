@@ -32,16 +32,16 @@ struct Parser[options: ParseOptions = ParseOptions()]:
         self.data = args^
 
     @staticmethod
-    def parse[T: MojOptDeserializable & _Base]() raises MojOptErr -> T:
+    def parse[T: MojOptDeserializable]() raises MojOptErr -> T:
         var parser = Parser()
         return T.from_opts(parser)
 
     @staticmethod
-    def parse[T: MojOptDeserializable & _Base](var args: List[String]) raises MojOptErr -> T:
+    def parse[T: MojOptDeserializable](var args: List[String]) raises MojOptErr -> T:
         var parser = Parser(args^)
         return T.from_opts(parser)
 
-    def is_done(read self) -> Bool:
+    def is_done(self) -> Bool:
         return self.cursor == len(self.data)
 
     def _get_next(mut self) -> String:

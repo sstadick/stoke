@@ -61,13 +61,27 @@ struct CustomType(Copyable, Defaultable, Equatable, MojOptDeserializable, Writab
 
     @implicit
     def __init__[
+        default_value_length: Int,
+        //,
         help: String,
-        default_value: Optional[List[String]],
+        default_value: Optional[Array[String, default_value_length]],
         defaultable: Bool,
         long: Optional[String],
         short: Optional[String],
         is_arg: Bool,
-    ](out self, opt: Opt[Self, help, default_value, defaultable, long, short, is_arg],):
+    ](
+        out self,
+        opt: Opt[
+            default_value_length=default_value_length,
+            T=Self,
+            help=help,
+            default_value=default_value,
+            defaultable=defaultable,
+            long=long,
+            short=short,
+            is_arg=is_arg,
+        ],
+    ):
         self = opt.value.copy()
 
     @staticmethod
