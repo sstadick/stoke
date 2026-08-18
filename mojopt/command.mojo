@@ -61,7 +61,11 @@ struct MojOpt[*CommandTypes: Commandable](Movable):
         else:
             if len(self.argv) > 0 and (self.argv[0] == "--help" or self.argv[0] == "-h"):
                 if toolkit_description.byte_length() > 0:
-                    print("\n".join([line.lstrip() for line in toolkit_description.splitlines()]))
+                    print(
+                        "\n".join(
+                            [String(line.lstrip()) for line in toolkit_description.splitlines()]
+                        )
+                    )
                 print("\nCommands:")
                 comptime for i in range(len(Self.CommandTypes)):
                     print(t"  {Self.CommandTypes[i].name}:")

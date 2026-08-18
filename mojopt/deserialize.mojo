@@ -1,9 +1,14 @@
 from std.builtin.rebind import downcast
 from std.collections import Set
-from std.collections.string.string_slice import _get_kgen_string
-from std.memory import ArcPointer, OwnedPointer
+from std.collections.string.string_span import _get_kgen_string
+from std.memory import (
+    ArcPointer,
+    forget_deinit,
+    is_trivially_deletable,
+    OwnedPointer,
+    UnsafeMaybeUninit,
+)
 from std.os import abort
-from std.sys.intrinsics import _type_is_eq
 
 from mojopt.parser import Parser, ParseOptions
 from mojopt.error import MojOptErr, DisplayHelp
@@ -12,7 +17,8 @@ from mojopt.help import get_help
 
 
 comptime non_struct_error = "Cannot deserialize non-struct type"
-comptime _Base = ImplicitlyDestructible & Movable
+comptime _Base = Deinitable & Movable
+comptime _MaybeUninit[T: Movable]: Movable = UnsafeMaybeUninit[T]
 
 
 trait MojOptDeserializable(_Base):
@@ -75,7 +81,8 @@ trait Appendable(_Base):
 trait Optable(MojOptDeserializable):
     comptime opt_help: String
     # TODO: needs parametric traits so this doesn't have to be a string
-    comptime opt_default_value: Optional[List[String]]
+    comptime opt_default_value_length: Int
+    comptime opt_default_value: Optional[Array[String, Self.opt_default_value_length]]
     comptime opt_defaultable: Bool
     comptime opt_long: Optional[String]
     comptime opt_short: Optional[String]
@@ -91,10 +98,12 @@ trait Optable(MojOptDeserializable):
 
 
 struct Opt[
+    default_value_length: Int = 0,
+    //,
     # T: MojOptDeserializable,
-    T: AnyType & _Base,
+    T: _Base,
     help: String = "",
-    default_value: Optional[List[String]] = None,
+    default_value: Optional[Array[String, default_value_length]] = None,
     defaultable: Bool = False,
     long: Optional[String] = None,
     short: Optional[String] = None,
@@ -109,12 +118,13 @@ struct Opt[
     Writable,
 ):
     comptime opt_help = Self.help
+    comptime opt_default_value_length = Self.default_value_length
     comptime opt_default_value = Self.default_value
     comptime opt_defaultable = Self.defaultable
     comptime opt_long = Self.long
     comptime opt_short = Self.short
     comptime opt_is_arg = Self.is_arg
-    comptime opt_is_flag = _type_is_eq[Self.T, Bool]()
+    comptime opt_is_flag = Self.T == Bool
 
     # Needed until MOCO-3413 is resolved (conforms_to does not respect where clause and will return True even for where-gated traits)
     comptime opt_is_appendable = conforms_to(Self.T, MojOptDeserializableAppendable)
@@ -177,7 +187,7 @@ struct Opt[
         comptime if Self.opt_default_value:
             comptime check = _comptime_deserialize_impl[Self.T](
                 Parser[ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)](
-                    materialize[Self.opt_default_value]().value().copy()
+                    List(materialize[Self.opt_default_value.value()]())
                 )
             )
             comptime if not check.ok:
@@ -235,13 +245,7 @@ def __is_opt[T: AnyType]() -> Bool:
 
 
 def __all_dtors_are_trivial[T: AnyType]() -> Bool:
-    comptime r = reflect[T]
-    comptime field_types = r.field_types()
-    comptime for i in range(r.field_count()):
-        comptime type = field_types[i]
-        if not downcast[type, ImplicitlyDestructible].__del__is_trivial:
-            return False
-    return True
+    return is_trivially_deletable[T]()
 
 
 def __to_ident(s: String) -> String:
@@ -343,9 +347,9 @@ def _default_deserialize[
 
     # Fill via key-value pairs
 
-    # maybe an optimization since the InlineArray ctor uses a for loop
+    # Maybe an optimization since the Array constructor uses a for loop,
     # but according to the IR this will just inline the computed values
-    var seen = materialize[InlineArray[Bool, field_count](fill=False)]()
+    var seen = materialize[Array[Bool, field_count](fill=False)]()
     var possible_idents = materialize[__possible_idents[T]()]()
 
     comptime help = get_help[downcast[T, MojOptDeserializable]]() if conforms_to(
@@ -379,18 +383,18 @@ def _default_deserialize[
                         Error(t"{candidate_ident} is a positional argument, not an option.")
                     )
 
-                ref field = trait_downcast[_Base](r.field_ref[i](s))
-                comptime TField = downcast[type_of(field), _Base]
+                ref field = r.field_ref[i](s)
+                comptime assert conforms_to(type_of(field), _Base)
+                comptime TField = type_of(field)
                 comptime is_appendable = __is_appendable[TField]() and (
                     not is_optable or downcast[field_type, Optable].opt_is_appendable
                 )
 
                 # MojOptTraits - all okay because we've checked if TField/field is_optable, which in turn means it impls MojOptTraits
                 comptime if is_appendable:
-                    trait_downcast[MojOptDeserializableAppendable](field).append_parse(p)
-                elif _type_is_eq[TField, Bool]() or (
-                    is_optable and downcast[field_type, Optable].opt_is_flag
-                ):
+                    comptime assert conforms_to(TField, MojOptDeserializableAppendable)
+                    field.append_parse(p)
+                elif TField == Bool or (is_optable and downcast[field_type, Optable].opt_is_flag):
                     if seen_i:
                         raise MojOptErr(Error(t"Duplicate option: {candidate_ident}"))
                     comptime if is_optable and Bool(
@@ -398,7 +402,7 @@ def _default_deserialize[
                     ):
                         # Invert whatever the supplied default was
                         comptime value = downcast[field_type, Optable].opt_default_value.value()
-                        var p_bool = Parser(materialize[value]().copy())
+                        var p_bool = Parser(List(materialize[value]()))
                         var b = p_bool.read_bool()
                         # TODO: this should be doable without re-parsing
                         # but we go through it since field could be Bool or Opt[Bool]
@@ -446,8 +450,9 @@ def _default_deserialize[
             comptime if is_optable and downcast[field_types[i], Optable].opt_is_arg:
                 ref seen_i = seen.unsafe_get(i)
                 seen_i = True
-                ref field = trait_downcast[_Base](r.field_ref[i](s))
-                comptime TField = downcast[type_of(field), _Base]
+                ref field = r.field_ref[i](s)
+                comptime assert conforms_to(type_of(field), _Base)
+                comptime TField = type_of(field)
                 try:
                     field = _deserialize_impl[type_of(field)](pp)
                 except e:
@@ -470,9 +475,10 @@ def _default_deserialize[
             comptime if is_optable and Bool(downcast[field_types[i], Optable].opt_default_value):
                 # First try to get a default from the metadata
                 comptime default = downcast[field_types[i], Optable].opt_default_value.value()
-                ref field = trait_downcast[_Base](r.field_ref[i](s))
+                ref field = r.field_ref[i](s)
+                comptime assert conforms_to(type_of(field), _Base)
                 var p = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingDefaults)](
-                    materialize[default]()
+                    List(materialize[default]())
                 )
                 field = downcast[type_of(field), MojOptDeserializable].from_opts(p)
             elif __is_optional[field_types[i]]() or (
@@ -482,8 +488,9 @@ def _default_deserialize[
             ):
                 # Then check if defaultable or optional
 
-                ref field = trait_downcast[Movable & Defaultable](r.field_ref[i](s))
-                UnsafePointer(to=field).init_pointee_move(type_of(field)())
+                ref field = r.field_ref[i](s)
+                comptime assert conforms_to(type_of(field), Movable & Defaultable)
+                Pointer(to=field).unsafe_write(type_of(field)())
 
             else:
                 # Explode
@@ -514,7 +521,7 @@ def _comptime_deserialize_impl[
     options: ParseOptions, //, T: _Base
 ](var p: Parser[options]) -> DefaultDeserCheck:
     try:
-        s = _deserialize_impl[T](p)
+        var s = _deserialize_impl[T](p)
         if p.is_done():
             return DefaultDeserCheck(True, None)
         else:
@@ -548,22 +555,9 @@ __extension String(MojOptDeserializable):
         return False
 
 
-__extension Int(MojOptDeserializable):
-    def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
-        s = Int(p.read_int())
-
-    @staticmethod
-    def description() -> String:
-        return ""
-
-    @staticmethod
-    def _derive_help() -> Bool:
-        return False
-
-
 __extension SIMD(MojOptDeserializable):
     def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
-        comptime assert Self.size == 1, "Currenlty only Scalars are supported by MojOpt"
+        comptime assert Self.length == 1, "Currently only Scalars are supported by MojOpt"
         s = Self()
         comptime if Self.dtype.is_numeric():
             comptime if Self.dtype.is_floating_point():
@@ -640,7 +634,8 @@ __extension FloatLiteral(MojOptDeserializable):
 __extension ArcPointer(MojOptDeserializable):
     @staticmethod
     def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
-        s = Self(_deserialize_impl[downcast[Self.T, _Base]](p))
+        comptime assert conforms_to(Self.T, _Base)
+        s = Self(_deserialize_impl[Self.T](p))
 
     @staticmethod
     def description() -> String:
@@ -654,7 +649,8 @@ __extension ArcPointer(MojOptDeserializable):
 __extension OwnedPointer(MojOptDeserializable):
     @staticmethod
     def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
-        s = rebind_var[Self](OwnedPointer(_deserialize_impl[downcast[Self.T, _Base]](p)))
+        comptime assert conforms_to(Self.T, _Base)
+        s = rebind_var[Self](OwnedPointer(_deserialize_impl[Self.T](p)))
 
     @staticmethod
     def description() -> String:
@@ -673,7 +669,8 @@ __extension OwnedPointer(MojOptDeserializable):
 __extension Optional(MojOptDeserializable):
     @staticmethod
     def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
-        s = Self(_deserialize_impl[downcast[Self.T, _Base]](p))
+        comptime assert conforms_to(Self.T, _Base)
+        s = Self(_deserialize_impl[Self.T](p))
 
     @staticmethod
     def description() -> String:
@@ -686,37 +683,41 @@ __extension Optional(MojOptDeserializable):
 
 __extension List(MojOptDeserializableAppendable):
     def append_to(mut self, var value: Some[Copyable & _Base]):
+        comptime assert conforms_to(Self.T, Copyable & _Base)
         self.append(rebind_var[Self.T](value^))
 
     def append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises MojOptErr:
-        var deser = _deserialize_impl[downcast[Self.T, _Base]](p)  # _Base
-        var value = trait_downcast_var[Copyable & _Base](deser^)  # implicitly Self.T
-        self.append_to(value^)
+        comptime assert conforms_to(Self.T, Copyable & _Base)
+        var deser = _deserialize_impl[Self.T](p)
+        self.append_to(deser^)
 
     @staticmethod
     def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
+        comptime assert conforms_to(Self.T, _Base)
         s = Self()
 
         try:
             comptime if options.parsing_mode == ParseOptions.ParsingArguments:
                 # If we are argument parsing, consume all the values possible
                 while not p.is_done():
-                    s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
+                    s.append(_deserialize_impl[Self.T](p))
             elif options.parsing_mode == ParseOptions.ParsingOptions:
                 # If we are still option parsing, lists will come as kv pairs still
-                s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
+                s.append(_deserialize_impl[Self.T](p))
             elif options.parsing_mode == ParseOptions.ParsingDefaults:
                 # Parsing a user defined default value
                 while not p.is_done():
-                    s.append(_deserialize_impl[downcast[Self.T, _Base]](p))
+                    s.append(_deserialize_impl[Self.T](p))
             else:
                 abort(t"Unknown parse mode: {options.parsing_mode}")
         except e:
+            comptime assert conforms_to(Self.T, Deinitable)
 
             def destroy_element(var element: Self.T):
-                _ = trait_downcast_var[Movable & ImplicitlyDestructible](element^)
+                comptime assert conforms_to(type_of(element), Deinitable)
+                _ = rebind_var[downcast[Self.T, Deinitable]](element^)
 
-            s^.destroy_with(destroy_element)
+            s^.deinit_with(destroy_element)
             raise e^
 
     @staticmethod
@@ -730,30 +731,41 @@ __extension List(MojOptDeserializableAppendable):
 
 __extension Set(MojOptDeserializableAppendable):
     def append_to(mut self, var value: Some[Copyable & _Base]):
+        comptime assert conforms_to(Self.T, Copyable & _Base)
         self.add(rebind_var[Self.T](value^))
 
     def append_parse[options: ParseOptions, //](mut self, mut p: Parser[options]) raises MojOptErr:
-        var deser = _deserialize_impl[downcast[Self.T, _Base]](p)  # _Base
-        var value = trait_downcast_var[Copyable & _Base](deser^)  # implicitly Self.T
-        self.append_to(value^)
+        comptime assert conforms_to(Self.T, Copyable & _Base)
+        var deser = _deserialize_impl[Self.T](p)
+        self.append_to(deser^)
 
     @staticmethod
     def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
+        comptime assert conforms_to(Self.T, _Base)
         s = Self()
 
-        comptime if options.parsing_mode == ParseOptions.ParsingArguments:
-            # If we are argument parsing, consume all the values possible
-            while not p.is_done():
-                s.add(_deserialize_impl[downcast[Self.T, _Base]](p))
-        elif options.parsing_mode == ParseOptions.ParsingOptions:
-            # If we are still option parsing, lists will come as kv pairs still
-            s.add(_deserialize_impl[downcast[Self.T, _Base]](p))
-        elif options.parsing_mode == ParseOptions.ParsingDefaults:
-            # Parsing a user defined default value
-            while not p.is_done():
-                s.add(_deserialize_impl[downcast[Self.T, _Base]](p))
-        else:
-            abort(t"Unknown parse mode: {options.parsing_mode}")
+        try:
+            comptime if options.parsing_mode == ParseOptions.ParsingArguments:
+                # If we are argument parsing, consume all the values possible
+                while not p.is_done():
+                    s.add(_deserialize_impl[Self.T](p))
+            elif options.parsing_mode == ParseOptions.ParsingOptions:
+                # If we are still option parsing, sets will come as kv pairs still
+                s.add(_deserialize_impl[Self.T](p))
+            elif options.parsing_mode == ParseOptions.ParsingDefaults:
+                # Parsing a user defined default value
+                while not p.is_done():
+                    s.add(_deserialize_impl[Self.T](p))
+            else:
+                abort(t"Unknown parse mode: {options.parsing_mode}")
+        except e:
+
+            def destroy_element(var element: Self.T):
+                comptime assert conforms_to(type_of(element), Deinitable)
+                _ = rebind_var[downcast[Self.T, Deinitable]](element^)
+
+            s^.deinit_with(destroy_element)
+            raise e^
 
     @staticmethod
     def description() -> String:
@@ -764,29 +776,38 @@ __extension Set(MojOptDeserializableAppendable):
         return False
 
 
-__extension InlineArray(MojOptDeserializable):
+__extension Array(MojOptDeserializable):
     @staticmethod
     def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
-        s = Self(uninitialized=True)
+        comptime assert conforms_to(Self.T, _Base)
         comptime assert (
             options.parsing_mode != ParseOptions.ParsingOptions
         ), "Cannot use fixed-size container as an option"
+
+        var storage = Array[UnsafeMaybeUninit[Self.T], Self.length](uninitialized=True)
+        var initialized = 0
 
         comptime if (
             options.parsing_mode == ParseOptions.ParsingArguments
             or options.parsing_mode == ParseOptions.ParsingDefaults
         ):
-            # If we are argument parsing, consume all the values possible
-            comptime for i in range(Self.size):
-                if p.is_done():
-                    raise Error(t"Found {i} values, expected {len(s)}")
-                UnsafePointer(to=s[i]).init_pointee_move(
-                    _deserialize_impl[downcast[Self.ElementType, _Base]](p)
-                )
+            try:
+                # If we are argument parsing, consume all the values possible
+                comptime for i in range(Self.length):
+                    if p.is_done():
+                        raise Error(t"Found {i} values, expected {Self.length}")
+                    storage[i].init_from(_deserialize_impl[Self.T](p))
+                    initialized += 1
+            except e:
+                for i in range(initialized):
+                    storage[i].unsafe_assume_init_destroy()
+                raise e^
         elif options.parsing_mode == ParseOptions.ParsingOptions:
             raise Error("Cannot use fixed-size container as an option")
         else:
             abort(t"Unknown parse mode: {options.parsing_mode}")
+
+        s = Self(unsafe_assume_initialized=storage^)
 
     @staticmethod
     def description() -> String:
@@ -800,26 +821,57 @@ __extension InlineArray(MojOptDeserializable):
 __extension Tuple(MojOptDeserializable):
     @staticmethod
     def from_opts[options: ParseOptions, //](mut p: Parser[options], out s: Self) raises MojOptErr:
-        __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(s))
+        comptime assert Self.element_types.all_conforms_to[Deinitable]()
         comptime assert (
             options.parsing_mode != ParseOptions.ParsingOptions
         ), "Cannot use fixed-size container as an option"
+
+        comptime StorageTypes = Self.element_types.map[_MaybeUninit]()
+        comptime assert StorageTypes.all_conforms_to[Defaultable]()
+        comptime assert StorageTypes.all_conforms_to[Deinitable]()
+        var storage: Tuple[*StorageTypes]
+        __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(storage))
+        var initialized = 0
+
+        @parameter
+        def deinit_storage[idx: Int](var element: StorageTypes[idx]):
+            forget_deinit(element^)
 
         comptime if (
             options.parsing_mode == ParseOptions.ParsingArguments
             or options.parsing_mode == ParseOptions.ParsingDefaults
         ):
-            # If we are argument parsing, consume all the values possible
-            comptime for i in range(Self.__len__()):
-                if p.is_done():
-                    raise Error(t"Found {i} values, expected {len(s)}")
-                UnsafePointer(to=s[i]).init_pointee_move(
-                    _deserialize_impl[downcast[Self.element_types[i], _Base]](p)
-                )
+            try:
+                # If we are argument parsing, consume all the values possible
+                comptime for i in range(Self.__len__()):
+                    comptime ElementType = Self.element_types[i]
+                    comptime assert conforms_to(ElementType, _Base)
+                    if p.is_done():
+                        raise Error(t"Found {i} values, expected {Self.__len__()}")
+                    ref slot = rebind[UnsafeMaybeUninit[ElementType]](storage[i])
+                    slot.init_from(_deserialize_impl[ElementType](p))
+                    initialized += 1
+            except e:
+                comptime for i in range(Self.__len__()):
+                    if i < initialized:
+                        comptime ElementType = Self.element_types[i]
+                        ref slot = rebind[UnsafeMaybeUninit[ElementType]](storage[i])
+                        slot.unsafe_assume_init_destroy()
+                storage^.deinit_with[deinit_storage]()
+                raise e^
         elif options.parsing_mode == ParseOptions.ParsingOptions:
+            storage^.deinit_with[deinit_storage]()
             raise Error("Cannot use fixed-size container as an option")
         else:
+            storage^.deinit_with[deinit_storage]()
             abort(t"Unknown parse mode: {options.parsing_mode}")
+
+        __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(s))
+        comptime for i in range(Self.__len__()):
+            comptime ElementType = Self.element_types[i]
+            ref slot = rebind[UnsafeMaybeUninit[ElementType]](storage[i])
+            Pointer(to=s[i]).unsafe_write(slot.unsafe_assume_init_take())
+        storage^.deinit_with[deinit_storage]()
 
     @staticmethod
     def description() -> String:

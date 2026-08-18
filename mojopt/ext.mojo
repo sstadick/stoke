@@ -6,47 +6,91 @@ from mojopt.deserialize import Opt
 __extension String:
     @implicit
     def __init__[
+        default_value_length: Int,
+        //,
         help: String,
-        default_value: Optional[List[String]],
+        default_value: Optional[Array[String, default_value_length]],
         defaultable: Bool,
         long: Optional[String],
         short: Optional[String],
         is_arg: Bool,
-    ](out self, opt: Opt[String, help, default_value, defaultable, long, short, is_arg],):
+    ](
+        out self,
+        opt: Opt[
+            default_value_length=default_value_length,
+            T=String,
+            help=help,
+            default_value=default_value,
+            defaultable=defaultable,
+            long=long,
+            short=short,
+            is_arg=is_arg,
+        ],
+    ):
         self = opt.value
 
 
-__extension Int:
+__extension SIMD:
     @implicit
     def __init__[
+        default_value_length: Int,
+        //,
         help: String,
-        default_value: Optional[List[String]],
+        default_value: Optional[Array[String, default_value_length]],
         defaultable: Bool,
         long: Optional[String],
         short: Optional[String],
         is_arg: Bool,
-    ](out self, opt: Opt[Int, help, default_value, defaultable, long, short, is_arg],):
+    ](
+        out self,
+        opt: Opt[
+            default_value_length=default_value_length,
+            T=Self,
+            help=help,
+            default_value=default_value,
+            defaultable=defaultable,
+            long=long,
+            short=short,
+            is_arg=is_arg,
+        ],
+    ):
         self = opt.value
 
 
 __extension Bool:
     @implicit
     def __init__[
+        default_value_length: Int,
+        //,
         help: String,
-        default_value: Optional[List[String]],
+        default_value: Optional[Array[String, default_value_length]],
         defaultable: Bool,
         long: Optional[String],
         short: Optional[String],
         is_arg: Bool,
-    ](out self, opt: Opt[Bool, help, default_value, defaultable, long, short, is_arg],):
+    ](
+        out self,
+        opt: Opt[
+            default_value_length=default_value_length,
+            T=Bool,
+            help=help,
+            default_value=default_value,
+            defaultable=defaultable,
+            long=long,
+            short=short,
+            is_arg=is_arg,
+        ],
+    ):
         self = opt.value
 
 
 __extension List:
     @implicit
     def __init__[
+        default_value_length: Int,
+        //,
         help: String,
-        default_value: Optional[List[String]],
+        default_value: Optional[Array[String, default_value_length]],
         defaultable: Bool,
         long: Optional[String],
         short: Optional[String],
@@ -54,13 +98,14 @@ __extension List:
     ](
         out self: List[Self.T],
         opt: Opt[
-            List[downcast[Self.T, Copyable & ImplicitlyDestructible]],
-            help,
-            default_value,
-            defaultable,
-            long,
-            short,
-            is_arg,
+            default_value_length=default_value_length,
+            T=List[downcast[Self.T, Copyable & Deinitable]],
+            help=help,
+            default_value=default_value,
+            defaultable=defaultable,
+            long=long,
+            short=short,
+            is_arg=is_arg,
         ],
     ):
         self = rebind_var[Self](opt.value.copy())

@@ -55,13 +55,27 @@ struct CustomType(Copyable, Defaultable, Equatable, MojOptDeserializable, Writab
 
     @implicit
     def __init__[
+        default_value_length: Int,
+        //,
         help: String,
-        default_value: Optional[List[String]],
+        default_value: Optional[Array[String, default_value_length]],
         defaultable: Bool,
         long: Optional[String],
         short: Optional[String],
         is_arg: Bool,
-    ](out self, opt: Opt[Self, help, default_value, defaultable, long, short, is_arg],):
+    ](
+        out self,
+        opt: Opt[
+            default_value_length=default_value_length,
+            T=Self,
+            help=help,
+            default_value=default_value,
+            defaultable=defaultable,
+            long=long,
+            short=short,
+            is_arg=is_arg,
+        ],
+    ):
         self = opt.value.copy()
 
     @staticmethod
@@ -384,10 +398,10 @@ def test_mojopt_default_args_list() raises:
     assert_equal(CustomType("John", "Doe"), args.my_custom)
     assert_equal(42, args.arg_one)
     assert_equal(
-        [42, 43],
+        List([42, 43]),
         args.remaining_args,
     )
-    assert_equal([10, 11, 12], args.opt_list)
+    assert_equal(List([10, 11, 12]), args.opt_list)
 
 
 @fieldwise_init
@@ -481,7 +495,7 @@ struct ArgsBareType(Defaultable, MojOptDeserializable):
 
 
 @fieldwise_init
-struct BareComplex(Defaultable, ImplicitlyDestructible, Movable):
+struct BareComplex(Defaultable, Deinitable, Movable):
     var animal: String
     var thing: String
     var many: Opt[List[Int], is_arg=True]
@@ -512,7 +526,7 @@ def test_bare_complex() raises:
 
 
 @fieldwise_init
-struct DefaultableLarge(Defaultable, ImplicitlyDestructible, MojOptDeserializable):
+struct DefaultableLarge(Defaultable, Deinitable, MojOptDeserializable):
     var small: Opt[Int, defaultable=True]
     var medium: Opt[List[String], defaultable=True]
     var large: Opt[Thing, defaultable=True]
@@ -523,7 +537,7 @@ struct DefaultableLarge(Defaultable, ImplicitlyDestructible, MojOptDeserializabl
 
 
 @fieldwise_init
-struct Thing(Defaultable, ImplicitlyDestructible, Movable):
+struct Thing(Defaultable, Deinitable, Movable):
     var one: Int
     var name: String
 
@@ -717,30 +731,48 @@ def test_set() raises:
     assert_equal(args.item, {1, 2, 3})
 
 
+def test_set_parse_error() raises:
+    var parser = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](["1", "bad"])
+    with assert_raises():
+        var _ = Set[Int].from_opts(parser)
+
+
 @fieldwise_init
-struct InlineArrayTest(Defaultable, MojOptDeserializable):
-    var item: Opt[InlineArray[Int, 3], is_arg=True]
-    # var item2: InlineArray[Int, 3] # Uncomment to induce compiler error
+struct ArrayTest(Defaultable, MojOptDeserializable):
+    var item: Opt[Array[Int, 3], is_arg=True]
+    # var item2: Array[Int, 3] # Uncomment to induce compiler error
 
     def __init__(out self):
-        self.item = {InlineArray[Int, 3](fill=0)}
-        # self.item2 = InlineArray[Int, 3](fill=0)
+        self.item = {Array[Int, 3](fill=0)}
+        # self.item2 = Array[Int, 3](fill=0)
 
 
-def test_inlinearray() raises:
+def test_array() raises:
     var parser = Parser(["1", "2", "3"])
-    var args = InlineArrayTest.from_opts(parser)
+    var args = ArrayTest.from_opts(parser)
     assert_equal(args.item.value, [1, 2, 3])
+
+
+def test_array_parse_error() raises:
+    var invalid = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](
+        ["1", "bad", "3"]
+    )
+    with assert_raises():
+        var _ = Array[Int, 3].from_opts(invalid)
+
+    var too_short = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](["1", "2"])
+    with assert_raises():
+        var _ = Array[Int, 3].from_opts(too_short)
 
 
 @fieldwise_init
 struct TupleTest(Defaultable, MojOptDeserializable):
     var item: Opt[Tuple[Int, String, Float64], is_arg=True]
-    # var item2: InlineArray[Int, 3] # Uncomment to induce compiler error
+    # var item2: Array[Int, 3] # Uncomment to induce compiler error
 
     def __init__(out self):
         self.item = {Tuple(0, "0", 0.0)}
-        # self.item2 = InlineArray[Int, 3](fill=0)
+        # self.item2 = Array[Int, 3](fill=0)
 
 
 def test_tuple() raises:
@@ -749,10 +781,24 @@ def test_tuple() raises:
     assert_equal(args.item.value, (1, "foobar", 3.14))
 
 
+def test_tuple_parse_error() raises:
+    var invalid = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](
+        ["1", "foobar", "bad"]
+    )
+    with assert_raises():
+        var _ = Tuple[Int, String, Float64].from_opts(invalid)
+
+    var too_short = Parser[ParseOptions(parsing_mode=ParseOptions.ParsingArguments)](
+        ["1", "foobar"]
+    )
+    with assert_raises():
+        var _ = Tuple[Int, String, Float64].from_opts(too_short)
+
+
 @fieldwise_init
 struct NestedTupleTest(Defaultable, MojOptDeserializable):
     var item: Opt[Tuple[Int, String, Tuple[Int, String]], is_arg=True]
-    # var item2: InlineArray[Int, 3] # Uncomment to induce compiler error
+    # var item2: Array[Int, 3] # Uncomment to induce compiler error
 
     def __init__(out self):
         self.item = {Tuple(0, "0", Tuple(1, "1"))}

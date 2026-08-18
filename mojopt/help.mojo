@@ -12,9 +12,8 @@ def get_help[T: _Base, indent_level: Int = 1]() -> String:
     var arguments: List[String] = []
     var description: String
     comptime if conforms_to(T, MojOptDeserializable) and not __is_opt[T]():
-        description = "\n".join(
-            [line.lstrip() for line in downcast[T, MojOptDeserializable].description().splitlines()]
-        )
+        var raw_description = downcast[T, MojOptDeserializable].description()
+        description = "\n".join([String(line.lstrip()) for line in raw_description.splitlines()])
     else:
         description = ""
 
@@ -81,7 +80,7 @@ def get_help[T: _Base, indent_level: Int = 1]() -> String:
         for line in more_help:
             options.append(line)
 
-    var final_list = [description]
+    var final_list: List[String] = [description]
     if len(arguments) > 0:
         if not __is_opt[T]():
             final_list.append("Arguments:")

@@ -34,7 +34,7 @@ struct Args(Commandable, Defaultable, MojOptDeserializable, Writable):
     """Positional args are supported.
 
     Only one "fully consuming" positional arg is allowed per command.
-    Additionally, fixed size positional arguments are supported such as Tuple and InlineArray.
+    Additionally, fixed size positional arguments are supported such as Tuple and Array.
     """
 
     def __init__(out self):
