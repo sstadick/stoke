@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v0.4.0
+- [chore](https://github.com/sstadick/mojopt/pull/7): Update to the stable Mojo v1.0.0 release
+- Add MIT and Unlicense licensing files
+
 ## v0.3.0
 - [chore](https://github.com/sstadick/mojopt/pull/6): Updates for Mojo v1.0.0b
 
