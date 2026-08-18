@@ -14,8 +14,7 @@ A Mojo library for parsing CLI args based on the Rust Structopt crate.
 From Modular Community:
 
 ```bash
-# Not yet published
-# pixi add mojopt && pixi install
+pixi add mojopt && pixi install
 ```
 
 From source:
